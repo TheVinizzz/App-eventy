@@ -1,29 +1,44 @@
 {
   "expo": {
-    "name": "EventyAppFixed",
-    "slug": "EventyAppFixed",
+    "name": "EventyApp",
+    "slug": "eventy-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0A0A0A"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eventy.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0A0A0A"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.eventy.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "jsEngine": "hermes",
+    "scheme": "eventy",
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite acesso às fotos para criar stories e posts",
+          "cameraPermission": "Permite acesso à câmera para capturar fotos e vídeos",
+          "microphonePermission": "Permite acesso ao microfone para gravar vídeos com áudio"
+        }
+      ]
+    ]
   }
 }
