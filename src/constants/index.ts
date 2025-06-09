@@ -3,6 +3,10 @@ export const APP_CONFIG = {
     DEVELOPMENT: 'https://db25-2804-1b0-f388-5f7c-a93d-9bae-3413-9ad.ngrok-free.app',
     PRODUCTION: 'http://localhost:3333', // Update this to your production URL when available
   },
+  WS_URL: {
+    DEVELOPMENT: 'wss://db25-2804-1b0-f388-5f7c-a93d-9bae-3413-9ad.ngrok-free.app',
+    PRODUCTION: 'ws://localhost:3333',
+  },
   TIMEOUT: 15000,
   RETRY_ATTEMPTS: 3,
 } as const;

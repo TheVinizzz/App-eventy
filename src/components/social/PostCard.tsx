@@ -192,9 +192,7 @@ const PostCard: React.FC<PostCardProps> = ({
           <Text style={styles.actionText}>{commentsCount}</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.actionButton} onPress={handleShare}>
-          <Ionicons name="share-outline" size={24} color={colors.brand.textSecondary} />
-        </TouchableOpacity>
+
       </View>
 
       {/* Options Modal */}

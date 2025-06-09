@@ -10,6 +10,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
 import eventService, { CreateEventData, CreateTicketBatchData } from '../services/eventService';
+import useCacheInvalidation from '../hooks/useCacheInvalidation';
 
 interface EventFormData {
   title: string;
@@ -28,6 +30,7 @@ interface EventFormData {
   location: string;
   type: string;
   mediaUrls: string[];
+  evenLoveEnabled: boolean;
 }
 
 interface TicketBatch {
@@ -52,6 +55,11 @@ const EVENT_TYPES = [
 const CreateEventScreen: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Responsiveness detection
+  const screenWidth = Dimensions.get('window').width;
+  const isSmallDevice = screenWidth < 375;
+  const isMediumDevice = screenWidth < 414;
   const [formData, setFormData] = useState<EventFormData>({
     title: '',
     description: '',
@@ -59,6 +67,7 @@ const CreateEventScreen: React.FC = () => {
     location: '',
     type: 'SHOW',
     mediaUrls: [],
+    evenLoveEnabled: false,
   });
   const [ticketBatches, setTicketBatches] = useState<TicketBatch[]>([]);
   const [showBatchForm, setShowBatchForm] = useState(false);
@@ -73,8 +82,16 @@ const CreateEventScreen: React.FC = () => {
 
   const { user } = useAuth();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  
+  // Cache invalidation hook
+  const { invalidateAfterEventCreation } = useCacheInvalidation({
+    onEventCreated: async () => {
+      // This will trigger refresh in MyEventsScreen when user navigates back
+      console.log('🔄 Event created - cache will be invalidated when navigating back');
+    },
+  });
 
-  const totalSteps = 3;
+  const totalSteps = 4;
 
   const updateFormData = (field: keyof EventFormData, value: string | boolean | Date | null | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -85,8 +102,10 @@ const CreateEventScreen: React.FC = () => {
       case 0: // Basic Information
         return !!(formData.title && formData.date && formData.location);
       case 1: // Image and Details
-        return !!(formData.type && formData.mediaUrls.length > 0); // Require at least one image
-      case 2: // Ticket Batches
+        return !!(formData.type); // Only require type, images are optional
+      case 2: // EvenLove Configuration
+        return true; // Optional step
+      case 3: // Ticket Batches
         return ticketBatches.length > 0;
       default:
         return false;
@@ -168,7 +187,33 @@ const CreateEventScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validateStep(2)) {
+    // Validação completa antes de enviar
+    if (!formData.title?.trim()) {
+      Alert.alert('Campo obrigatório', 'Por favor, digite o título do evento.');
+      return;
+    }
+
+    if (!formData.description?.trim()) {
+      Alert.alert('Campo obrigatório', 'Por favor, digite a descrição do evento.');
+      return;
+    }
+
+    if (!formData.date) {
+      Alert.alert('Campo obrigatório', 'Por favor, selecione a data do evento.');
+      return;
+    }
+
+    if (!formData.location?.trim()) {
+      Alert.alert('Campo obrigatório', 'Por favor, digite o local do evento.');
+      return;
+    }
+
+    if (!formData.type) {
+      Alert.alert('Campo obrigatório', 'Por favor, selecione o tipo do evento.');
+      return;
+    }
+
+    if (!validateStep(3)) {
       Alert.alert('Erro', 'Por favor, adicione pelo menos um lote de ingressos.');
       return;
     }
@@ -176,18 +221,20 @@ const CreateEventScreen: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Create event data
+      // Create event data with extra validation
       const eventData: CreateEventData = {
-        title: formData.title,
-        description: formData.description,
+        title: formData.title?.trim() || '',
+        description: formData.description?.trim() || '',
         date: formData.date?.toISOString() || new Date().toISOString(),
-        location: formData.location,
-        type: formData.type,
-        imageUrl: formData.mediaUrls.length > 0 ? formData.mediaUrls[0] : '', // First image as cover
-        mediaUrls: formData.mediaUrls,
+        location: formData.location?.trim() || '',
+        type: formData.type || 'CONFERENCE',
+        imageUrl: formData.mediaUrls.length > 0 ? formData.mediaUrls[0] : 'https://via.placeholder.com/800x600/FFD700/FFFFFF?text=Evento', // Default image if none provided
+        mediaUrls: formData.mediaUrls.length > 0 ? formData.mediaUrls : ['https://via.placeholder.com/800x600/FFD700/FFFFFF?text=Evento'],
+        evenLoveEnabled: formData.evenLoveEnabled || false,
       };
 
       console.log('Creating event with data:', eventData);
+      console.log('📤 Full event data being sent:', JSON.stringify(eventData, null, 2));
 
       // Create the event
       const response = await eventService.createEvent(eventData);
@@ -230,6 +277,9 @@ const CreateEventScreen: React.FC = () => {
         console.log('Ticket batches created successfully');
       }
 
+      // 🚀 Invalidar cache após criar evento
+      await invalidateAfterEventCreation();
+      
       Alert.alert(
         'Sucesso!',
         'Seu evento foi criado com sucesso!',
@@ -242,14 +292,22 @@ const CreateEventScreen: React.FC = () => {
       );
     } catch (error: any) {
       console.error('Error creating event:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
       
       let errorMessage = 'Ocorreu um erro ao criar o evento. Tente novamente.';
       
       if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+        if (Array.isArray(error.response.data.message)) {
+          errorMessage = `Campos obrigatórios faltando:\n${error.response.data.message.join('\n')}`;
+        } else {
+          errorMessage = error.response.data.message;
+        }
       } else if (error.message) {
         errorMessage = error.message;
       }
+
+              // Dados já foram logados antes da requisição
 
       Alert.alert('Erro', errorMessage);
     } finally {
@@ -385,211 +443,300 @@ const CreateEventScreen: React.FC = () => {
     </View>
   );
 
-  const renderTicketBatches = () => (
+    const renderTicketBatches = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Lotes de Ingressos</Text>
-      <Text style={styles.stepDescription}>
-        Configure os lotes de ingressos e preços do seu evento
-      </Text>
+      {/* Header clean e minimalista */}
+      <View style={styles.cleanHeader}>
+        <Text style={styles.cleanTitle}>Ingressos</Text>
+        <Text style={styles.cleanSubtitle}>Configure os lotes de ingressos para seu evento</Text>
+      </View>
 
-      {ticketBatches.length === 0 && (
-        <Card style={styles.warningCard}>
-          <View style={styles.warningContent}>
-            <Ionicons name="warning" size={24} color={colors.brand.warning} />
-            <View style={styles.warningTextContainer}>
-              <Text style={styles.warningTitle}>Lotes de ingressos obrigatórios!</Text>
-              <Text style={styles.warningText}>
-                Você precisa configurar pelo menos um lote de ingressos para criar o evento.
-                Use o formulário abaixo para adicionar os lotes com preços e quantidades.
-              </Text>
-            </View>
-          </View>
-        </Card>
-      )}
-
-      {/* Lista de lotes existentes */}
+      {/* Lista de lotes existentes - Design limpo */}
       {ticketBatches.length > 0 && (
-        <View style={styles.batchesList}>
-          <Text style={styles.batchesListTitle}>Lotes Configurados</Text>
+        <View style={styles.batchesContainer}>
           {ticketBatches.map((batch, index) => (
-            <Card key={batch.id || index} style={styles.batchCard}>
-              <View style={styles.batchHeader}>
-                <View style={styles.batchInfo}>
-                  <Text style={styles.batchName}>{batch.name}</Text>
-                  {batch.description ? (
-                    <Text style={styles.batchDescription}>{batch.description}</Text>
-                  ) : null}
+            <View key={batch.id || index} style={styles.cleanBatchCard}>
+              <View style={styles.cleanBatchCardHeader}>
+                <View style={styles.batchNameContainer}>
+                  <Text style={styles.cleanBatchName}>{batch.name}</Text>
+                  {batch.description && (
+                    <Text style={styles.cleanBatchDescription}>{batch.description}</Text>
+                  )}
                 </View>
                 <TouchableOpacity
                   onPress={() => removeTicketBatch(batch.id || index.toString())}
-                  style={styles.removeBatchButton}
+                  style={styles.cleanDeleteButton}
                 >
-                  <Ionicons name="trash" size={20} color={colors.brand.error} />
+                  <Ionicons name="close" size={20} color={colors.brand.textSecondary} />
                 </TouchableOpacity>
               </View>
-              
-              <View style={styles.batchDetails}>
-                <View style={styles.batchDetailItem}>
-                  <Text style={styles.batchDetailLabel}>Preço</Text>
-                  <Text style={styles.batchPrice}>R$ {batch.price.toFixed(2)}</Text>
-                </View>
-                <View style={styles.batchDetailItem}>
-                  <Text style={styles.batchDetailLabel}>Quantidade</Text>
-                  <Text style={styles.batchQuantity}>{batch.quantity} ingressos</Text>
-                </View>
-              </View>
 
-              <View style={styles.batchDates}>
-                <View style={styles.batchDateItem}>
-                  <Text style={styles.batchDetailLabel}>Início das vendas</Text>
-                  <Text style={styles.batchDateText}>
-                    {batch.startSaleDate ? batch.startSaleDate.toLocaleDateString('pt-BR') : 'Não definido'}
-                  </Text>
+              <View style={styles.batchDetailsContainer}>
+                <View style={styles.cleanDetailRow}>
+                  <Text style={styles.detailLabel}>Preço</Text>
+                  <Text style={styles.detailValue}>R$ {batch.price.toFixed(2)}</Text>
                 </View>
-                <View style={styles.batchDateItem}>
-                  <Text style={styles.batchDetailLabel}>Fim das vendas</Text>
-                  <Text style={styles.batchDateText}>
-                    {batch.endSaleDate ? batch.endSaleDate.toLocaleDateString('pt-BR') : 'Não definido'}
+                <View style={styles.cleanDetailRow}>
+                  <Text style={styles.detailLabel}>Quantidade</Text>
+                  <Text style={styles.detailValue}>{batch.quantity} ingressos</Text>
+                </View>
+                <View style={styles.cleanDetailRow}>
+                  <Text style={styles.detailLabel}>Vendas</Text>
+                  <Text style={styles.detailValue}>
+                    {batch.startSaleDate ? batch.startSaleDate.toLocaleDateString('pt-BR') : 'Imediato'} até{' '}
+                    {batch.endSaleDate ? batch.endSaleDate.toLocaleDateString('pt-BR') : 'evento'}
                   </Text>
                 </View>
               </View>
-            </Card>
+            </View>
           ))}
         </View>
       )}
 
-      {/* Botão para adicionar novo lote */}
-      {!showBatchForm ? (
-        <Button
-          title="+ Adicionar Lote de Ingresso"
-          onPress={() => setShowBatchForm(true)}
-          variant="outline"
+      {/* Botão adicionar lote - Estilo iOS */}
+      {!showBatchForm && (
+        <TouchableOpacity 
           style={styles.addBatchButton}
-        />
-      ) : (
-        <Card style={styles.batchForm}>
-          <View style={styles.batchFormHeader}>
-            <Text style={styles.batchFormTitle}>Novo Lote de Ingresso</Text>
+          onPress={() => setShowBatchForm(true)}
+        >
+          <View style={styles.addButtonContent}>
+            <View style={styles.addButtonIcon}>
+              <Ionicons name="add" size={24} color={colors.brand.primary} />
+            </View>
+            <View style={styles.addButtonText}>
+              <Text style={styles.addButtonTitle}>
+                {ticketBatches.length === 0 ? 'Criar primeiro lote' : 'Adicionar lote'}
+              </Text>
+              <Text style={styles.addButtonSubtitle}>
+                {ticketBatches.length === 0 
+                  ? 'Configure preços e disponibilidade' 
+                  : 'Criar mais um tipo de ingresso'
+                }
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.brand.textSecondary} />
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Formulário redesenhado - Uma informação por vez */}
+      {showBatchForm && (
+        <View style={styles.cleanForm}>
+          {/* Header do formulário */}
+          <View style={styles.cleanFormHeader}>
             <TouchableOpacity
               onPress={() => setShowBatchForm(false)}
-              style={styles.closeBatchFormButton}
+              style={styles.backButton}
             >
-              <Ionicons name="close" size={24} color={colors.brand.textSecondary} />
+              <Ionicons name="chevron-back" size={24} color={colors.brand.primary} />
             </TouchableOpacity>
+            <Text style={styles.formTitle}>Novo Lote</Text>
+            <View style={styles.headerSpacer} />
           </View>
-          
-          <View style={styles.batchFormContent}>
+
+          {/* Campos do formulário - Mobile first */}
+          <View style={styles.formContent}>
             {/* Nome do lote */}
-            <View style={styles.batchFormGroup}>
-              <Text style={styles.batchFormLabel}>Nome do Lote *</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Nome do lote</Text>
               <Input
-                placeholder="Ex: Lote 1, Promocional, VIP"
+                placeholder="Ex: Promocional, VIP, Pista"
                 value={currentBatch.name}
                 onChangeText={(value) => setCurrentBatch(prev => ({ ...prev, name: value }))}
-                style={styles.batchFormInput}
+                style={styles.cleanInput}
               />
             </View>
 
             {/* Descrição */}
-            <View style={styles.batchFormGroup}>
-              <Text style={styles.batchFormLabel}>Descrição</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Descrição (opcional)</Text>
               <Input
-                placeholder="Descrição opcional do lote"
+                placeholder="Descreva os benefícios deste lote"
                 value={currentBatch.description}
                 onChangeText={(value) => setCurrentBatch(prev => ({ ...prev, description: value }))}
                 multiline
                 numberOfLines={3}
-                style={StyleSheet.flatten([styles.batchFormInput, styles.batchFormTextArea])}
+                style={StyleSheet.flatten([styles.cleanInput, styles.textArea])}
               />
             </View>
 
-            {/* Preço e Quantidade */}
-            <View style={styles.batchFormRow}>
-              <View style={styles.batchFormHalf}>
-                <Text style={styles.batchFormLabel}>Preço (R$) *</Text>
-                <Input
-                  placeholder="0,00"
-                  value={currentBatch.price > 0 ? currentBatch.price.toString() : ''}
-                  onChangeText={(value) => {
-                    const numericValue = parseFloat(value.replace(',', '.')) || 0;
-                    setCurrentBatch(prev => ({ ...prev, price: numericValue }));
-                  }}
-                  keyboardType="numeric"
-                  style={styles.batchFormInput}
-                />
-              </View>
-
-              <View style={styles.batchFormHalf}>
-                <Text style={styles.batchFormLabel}>Quantidade *</Text>
-                <Input
-                  placeholder="100"
-                  value={currentBatch.quantity > 0 ? currentBatch.quantity.toString() : ''}
-                  onChangeText={(value) => {
-                    const numericValue = parseInt(value) || 0;
-                    setCurrentBatch(prev => ({ ...prev, quantity: numericValue }));
-                  }}
-                  keyboardType="numeric"
-                  style={styles.batchFormInput}
-                />
-              </View>
-            </View>
-
-            {/* Período de Vendas */}
-            <View style={styles.batchFormGroup}>
-              <Text style={styles.batchFormSectionTitle}>Período de Vendas</Text>
-              <Text style={styles.batchFormSectionDescription}>
-                Defina quando este lote estará disponível para venda
-              </Text>
-            </View>
-            
-            <View style={styles.batchFormGroup}>
-              <Text style={styles.batchFormLabel}>Início das Vendas</Text>
-              <DateTimePicker
-                value={currentBatch.startSaleDate}
-                onChange={(date) => setCurrentBatch(prev => ({ ...prev, startSaleDate: date }))}
-                placeholder="Selecione data e hora de início"
-                minimumDate={new Date()}
-                style={styles.batchFormInput}
-              />
-            </View>
-
-            <View style={styles.batchFormGroup}>
-              <Text style={styles.batchFormLabel}>Fim das Vendas</Text>
-              <DateTimePicker
-                value={currentBatch.endSaleDate}
-                onChange={(date) => setCurrentBatch(prev => ({ ...prev, endSaleDate: date }))}
-                placeholder="Selecione data e hora de fim"
-                minimumDate={currentBatch.startSaleDate || new Date()}
-                style={styles.batchFormInput}
-              />
-            </View>
-
-            {/* Botões de ação */}
-            <View style={styles.batchFormActions}>
-              <Button
-                title="Cancelar"
-                onPress={() => {
-                  setShowBatchForm(false);
-                  setCurrentBatch({
-                    name: '',
-                    description: '',
-                    price: 0,
-                    quantity: 0,
-                    startSaleDate: null,
-                    endSaleDate: null,
-                  });
+            {/* Preço */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Preço por ingresso</Text>
+              <Input
+                placeholder="0,00"
+                value={currentBatch.price > 0 ? currentBatch.price.toString() : ''}
+                onChangeText={(value) => {
+                  const numericValue = parseFloat(value.replace(',', '.')) || 0;
+                  setCurrentBatch(prev => ({ ...prev, price: numericValue }));
                 }}
-                variant="outline"
-                style={styles.batchActionButton}
+                keyboardType="numeric"
+                style={styles.cleanInput}
               />
-              <Button
-                title="Adicionar Lote"
-                onPress={addTicketBatch}
-                style={styles.batchActionButton}
+              <Text style={styles.inputHelper}>Valor em reais (R$)</Text>
+            </View>
+
+            {/* Quantidade */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Quantidade disponível</Text>
+              <Input
+                placeholder="100"
+                value={currentBatch.quantity > 0 ? currentBatch.quantity.toString() : ''}
+                onChangeText={(value) => {
+                  const numericValue = parseInt(value) || 0;
+                  setCurrentBatch(prev => ({ ...prev, quantity: numericValue }));
+                }}
+                keyboardType="numeric"
+                style={styles.cleanInput}
               />
+              <Text style={styles.inputHelper}>Número de ingressos deste lote</Text>
+            </View>
+
+            {/* Período de vendas - Completamente redesenhado */}
+            <View style={styles.salesSection}>
+              <Text style={styles.cleanSectionTitle}>Período de vendas</Text>
+              <Text style={styles.cleanSectionSubtitle}>
+                Defina quando este lote estará disponível para compra
+              </Text>
+
+              {/* Início das vendas */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Início das vendas</Text>
+                <DateTimePicker
+                  value={currentBatch.startSaleDate}
+                  onChange={(date) => setCurrentBatch(prev => ({ ...prev, startSaleDate: date }))}
+                  placeholder="Disponível imediatamente"
+                  minimumDate={new Date()}
+                  style={styles.cleanDatePicker}
+                />
+                <Text style={styles.inputHelper}>
+                  Deixe vazio para disponibilizar imediatamente
+                </Text>
+              </View>
+
+              {/* Fim das vendas */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Fim das vendas</Text>
+                <DateTimePicker
+                  value={currentBatch.endSaleDate}
+                  onChange={(date) => setCurrentBatch(prev => ({ ...prev, endSaleDate: date }))}
+                  placeholder="Até a data do evento"
+                  minimumDate={currentBatch.startSaleDate || new Date()}
+                  style={styles.cleanDatePicker}
+                />
+                <Text style={styles.inputHelper}>
+                  Deixe vazio para vender até o evento começar
+                </Text>
+              </View>
             </View>
           </View>
-        </Card>
+
+          {/* Botão de ação único e destacado */}
+          <View style={styles.formActions}>
+            <TouchableOpacity
+              onPress={addTicketBatch}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonText}>Criar Lote</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderEvenLoveConfig = () => (
+    <View style={styles.stepContent}>
+      <Text style={styles.stepTitle}>EvenLove ❤️</Text>
+      <Text style={styles.stepDescription}>
+        O EvenLove é uma funcionalidade inovadora que conecta participantes do seu evento de forma inteligente e segura. 
+        Baseado em interesses, localização e preferências, criamos conexões autênticas que podem durar para sempre.
+      </Text>
+
+      {/* Enable EvenLove Toggle */}
+      <Card>
+        <TouchableOpacity
+          style={[styles.evenLoveToggle, formData.evenLoveEnabled && styles.evenLoveToggleActive]}
+          onPress={() => updateFormData('evenLoveEnabled', !formData.evenLoveEnabled)}
+        >
+          <View style={styles.evenLoveToggleContent}>
+            <View style={styles.evenLoveToggleLeft}>
+              <LinearGradient
+                colors={formData.evenLoveEnabled ? ['#FF6B6B', '#FF8787'] : ['#333333', '#444444']}
+                style={styles.evenLoveIcon}
+              >
+                <Ionicons 
+                  name={formData.evenLoveEnabled ? "heart" : "heart-outline"} 
+                  size={24} 
+                  color={formData.evenLoveEnabled ? "#ffffff" : "#888888"} 
+                />
+              </LinearGradient>
+              <View style={styles.evenLoveToggleText}>
+                <Text style={styles.evenLoveToggleTitle}>
+                  {formData.evenLoveEnabled ? 'EvenLove Ativado' : 'Ativar EvenLove'}
+                </Text>
+                <Text style={styles.evenLoveToggleSubtitle}>
+                  {formData.evenLoveEnabled 
+                    ? 'Participantes poderão se conectar durante o evento'
+                    : 'Permitir que participantes se conectem'
+                  }
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.toggleSwitch, formData.evenLoveEnabled && styles.toggleSwitchActive]}>
+              <View style={[styles.toggleThumb, formData.evenLoveEnabled && styles.toggleThumbActive]} />
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Card>
+
+      {formData.evenLoveEnabled && (
+        <View style={styles.evenLoveDetails}>
+          {/* Benefits */}
+          <Card style={styles.evenLoveBenefits}>
+            <Text style={styles.benefitsTitle}>✨ Benefícios do EvenLove</Text>
+            
+            <View style={styles.benefitItem}>
+              <LinearGradient colors={['#4ECDC4', '#44A08D']} style={styles.benefitIcon}>
+                <Ionicons name="people" size={16} color="#ffffff" />
+              </LinearGradient>
+              <Text style={styles.benefitText}>Conecta participantes com interesses similares</Text>
+            </View>
+            
+            <View style={styles.benefitItem}>
+              <LinearGradient colors={['#667eea', '#764ba2']} style={styles.benefitIcon}>
+                <Ionicons name="shield-checkmark" size={16} color="#ffffff" />
+              </LinearGradient>
+              <Text style={styles.benefitText}>Ambiente seguro e moderado</Text>
+            </View>
+            
+            <View style={styles.benefitItem}>
+              <LinearGradient colors={['#f093fb', '#f5576c']} style={styles.benefitIcon}>
+                <Ionicons name="chatbubbles" size={16} color="#ffffff" />
+              </LinearGradient>
+              <Text style={styles.benefitText}>Chat integrado para conversas</Text>
+            </View>
+            
+            <View style={styles.benefitItem}>
+              <LinearGradient colors={['#4facfe', '#00f2fe']} style={styles.benefitIcon}>
+                <Ionicons name="location" size={16} color="#ffffff" />
+              </LinearGradient>
+              <Text style={styles.benefitText}>Baseado na localização do evento</Text>
+            </View>
+          </Card>
+
+          {/* Configuration Note */}
+          <Card style={styles.configNote}>
+            <View style={styles.configNoteHeader}>
+              <Ionicons name="settings" size={20} color={colors.brand.primary} />
+              <Text style={styles.configNoteTitle}>Configurações Avançadas</Text>
+            </View>
+            <Text style={styles.configNoteText}>
+              Após criar o evento, você poderá acessar as configurações avançadas do EvenLove no dashboard, 
+              incluindo faixa etária, critérios de matching e moderação.
+            </Text>
+          </Card>
+        </View>
       )}
     </View>
   );
@@ -601,6 +748,8 @@ const CreateEventScreen: React.FC = () => {
       case 1:
         return renderDescription();
       case 2:
+        return renderEvenLoveConfig();
+      case 3:
         return renderTicketBatches();
       default:
         return null;
@@ -674,6 +823,11 @@ const CreateEventScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
+
+// Get screen dimensions for responsive design
+const { width: screenWidth } = Dimensions.get('window');
+const isSmallScreen = screenWidth < 375;
+const isMediumScreen = screenWidth < 414;
 
 const styles = StyleSheet.create({
   container: {
@@ -1034,6 +1188,847 @@ const styles = StyleSheet.create({
   },
   typeOptionTextSelected: {
     color: colors.brand.background,
+  },
+  // EvenLove Styles
+  evenLoveToggle: {
+    padding: spacing.lg,
+  },
+  evenLoveToggleActive: {
+    backgroundColor: 'rgba(255, 107, 107, 0.1)',
+  },
+  evenLoveToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  evenLoveToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  evenLoveIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  evenLoveToggleText: {
+    flex: 1,
+  },
+  evenLoveToggleTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  evenLoveToggleSubtitle: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.brand.darkGray,
+    justifyContent: 'center',
+    padding: 2,
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#FF6B6B',
+  },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.brand.textSecondary,
+    alignSelf: 'flex-start',
+  },
+  toggleThumbActive: {
+    backgroundColor: colors.brand.textPrimary,
+    alignSelf: 'flex-end',
+  },
+  evenLoveDetails: {
+    marginTop: spacing.lg,
+  },
+  evenLoveBenefits: {
+    marginBottom: spacing.md,
+  },
+  benefitsTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.md,
+  },
+  benefitItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  benefitIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  benefitText: {
+    flex: 1,
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+  },
+  configNote: {
+    marginBottom: spacing.md,
+  },
+  configNoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  configNoteTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginLeft: spacing.sm,
+  },
+  configNoteText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.sm * 1.4,
+  },
+  
+  // ========= MODERN TICKET BATCHES STYLES =========
+  modernHeader: {
+    marginBottom: spacing.xl,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+  },
+  headerGradient: {
+    flexDirection: isSmallScreen ? 'column' : 'row',
+    alignItems: 'center',
+    padding: isSmallScreen ? spacing.lg : spacing.xl,
+    flexWrap: 'wrap',
+  },
+  headerIcon: {
+    width: isSmallScreen ? 48 : 64,
+    height: isSmallScreen ? 48 : 64,
+    borderRadius: borderRadius.xl,
+    backgroundColor: 'rgba(138, 43, 226, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: isSmallScreen ? 0 : spacing.lg,
+    marginBottom: isSmallScreen ? spacing.md : 0,
+  },
+  headerText: {
+    flex: 1,
+  },
+  modernStepTitle: {
+    fontSize: isSmallScreen ? typography.fontSizes.xl : typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+    textAlign: isSmallScreen ? 'center' : 'left',
+  },
+  modernStepSubtitle: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.md * 1.4,
+  },
+  
+  // Empty State
+  emptyState: {
+    marginBottom: spacing.xl,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+  },
+  emptyStateGradient: {
+    padding: isSmallScreen ? spacing.xl : spacing.xl * 1.5,
+    alignItems: 'center',
+  },
+  emptyStateIcon: {
+    marginBottom: spacing.lg,
+  },
+  emptyStateTitle: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    textAlign: 'center',
+    lineHeight: typography.fontSizes.md * 1.4,
+    marginBottom: spacing.xl,
+  },
+  quickStartButton: {
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  quickStartGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.lg,
+  },
+  quickStartText: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: 'white',
+    marginLeft: spacing.sm,
+  },
+  
+  // Modern Batches List
+  modernBatchesList: {
+    marginBottom: spacing.xl,
+  },
+  batchesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  modernBatchesTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+  },
+  addMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'rgba(138, 43, 226, 0.1)',
+  },
+  addMoreText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.primary,
+    marginLeft: spacing.xs,
+  },
+  
+  // Modern Batch Card
+  modernBatchCard: {
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.22,
+    shadowRadius: 2.22,
+  },
+  batchCardGradient: {
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modernBatchHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  batchTypeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  batchColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: spacing.sm,
+  },
+  modernBatchName: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    flex: 1,
+  },
+  modernRemoveButton: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+  },
+  modernBatchDescription: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    marginBottom: spacing.lg,
+    lineHeight: typography.fontSizes.sm * 1.4,
+  },
+  
+  // Info Grid
+  batchInfoGrid: {
+    flexDirection: isSmallScreen ? 'column' : 'row',
+    marginBottom: spacing.lg,
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  batchInfoCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  infoCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  infoCardLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.brand.textSecondary,
+    marginLeft: spacing.xs,
+    textTransform: 'uppercase',
+    fontWeight: typography.fontWeights.semibold,
+  },
+  infoCardValue: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+  },
+  
+  // Sales Period
+  salesPeriod: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  salesPeriodHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  salesPeriodTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+    marginLeft: spacing.xs,
+  },
+  salesDates: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  salesDate: {
+    flex: 1,
+  },
+  salesDateLabel: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.brand.textSecondary,
+    textTransform: 'uppercase',
+    fontWeight: typography.fontWeights.semibold,
+    marginBottom: spacing.xs,
+  },
+  salesDateValue: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.medium,
+    color: colors.brand.textPrimary,
+  },
+  salesDateSeparator: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginHorizontal: spacing.md,
+  },
+  
+  // Modern Form
+  modernBatchForm: {
+    marginTop: spacing.xl,
+    borderRadius: borderRadius.xl,
+    overflow: 'hidden',
+  },
+  formGradient: {
+    padding: isSmallScreen ? spacing.lg : spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modernFormHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  formHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  formIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'rgba(138, 43, 226, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
+  },
+  modernFormTitle: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+  },
+  modernCloseButton: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modernFormContent: {
+    gap: spacing.lg,
+  },
+  modernFormGroup: {
+    gap: spacing.sm,
+  },
+  modernFormLabel: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modernFormInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  modernFormTextArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  modernFormGrid: {
+    flexDirection: isSmallScreen ? 'column' : 'row',
+    gap: spacing.md,
+    flexWrap: 'wrap',
+  },
+  modernFormGridItem: {
+    flex: isSmallScreen ? undefined : 1,
+    width: isSmallScreen ? '100%' : undefined,
+    minWidth: isSmallScreen ? undefined : 120,
+    gap: spacing.sm,
+  },
+  modernFormSection: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    gap: spacing.md,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+  },
+  sectionSubtitle: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+  },
+  modernFormActions: {
+    flexDirection: isSmallScreen ? 'column' : 'row',
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  modernCancelButton: {
+    flex: 1,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  modernCancelText: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textSecondary,
+  },
+  modernCreateButton: {
+    flex: 1,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  createButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.sm,
+  },
+  modernCreateText: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: 'white',
+  },
+  
+  // ========= MOBILE-OPTIMIZED SALES PERIOD STYLES =========
+  salesPeriodSection: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: isSmallScreen ? spacing.lg : spacing.xl,
+    gap: spacing.lg,
+  },
+  salesSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  salesHeaderIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'rgba(30, 144, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  salesHeaderText: {
+    flex: 1,
+  },
+  salesSectionTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  salesSectionSubtitle: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.sm * 1.3,
+  },
+  
+  // Date Groups
+  saleDateGroup: {
+    gap: spacing.md,
+  },
+  saleDateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  saleDateTitle: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+  },
+  saleDateHelper: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.sm * 1.4,
+    marginBottom: spacing.sm,
+    fontStyle: 'italic',
+  },
+  modernSaleDatePicker: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    minHeight: 56,
+  },
+  
+  // Separator
+  salesSeparator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.sm,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  separatorDot: {
+    paddingHorizontal: spacing.md,
+  },
+  
+  // Preview
+  salesPreview: {
+    backgroundColor: 'rgba(138, 43, 226, 0.08)',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(138, 43, 226, 0.2)',
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  previewTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.primary,
+    textTransform: 'uppercase',
+  },
+  previewContent: {
+    paddingLeft: spacing.md,
+  },
+  previewText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.sm * 1.4,
+  },
+  previewLabel: {
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+  },
+  
+  // ========= CLEAN MOBILE-FIRST STYLES =========
+  cleanHeader: {
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: spacing.xl,
+  },
+  cleanTitle: {
+    fontSize: typography.fontSizes.xxl,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  cleanSubtitle: {
+    fontSize: typography.fontSizes.lg,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.lg * 1.4,
+  },
+
+  // Container de lotes existentes
+  batchesContainer: {
+    gap: spacing.lg,
+    marginBottom: spacing.xl,
+  },
+  cleanBatchCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  cleanBatchCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  batchNameContainer: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  cleanBatchName: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  cleanBatchDescription: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.md * 1.3,
+    fontStyle: 'italic',
+  },
+  cleanDeleteButton: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  batchDetailsContainer: {
+    gap: spacing.md,
+  },
+  cleanDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  detailLabel: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  detailValue: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textPrimary,
+    fontWeight: typography.fontWeights.semibold,
+  },
+
+  // Botão adicionar lote - Estilo iOS
+  addBatchButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    marginBottom: spacing.xl,
+  },
+  addButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  addButtonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.lg,
+    backgroundColor: 'rgba(138, 43, 226, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    flex: 1,
+    marginLeft: spacing.lg,
+    marginRight: spacing.md,
+  },
+  addButtonTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  addButtonSubtitle: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.md * 1.3,
+  },
+
+  // Formulário limpo
+  cleanForm: {
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    overflow: 'hidden',
+  },
+  cleanFormHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  backButton: {
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  formTitle: {
+    fontSize: typography.fontSizes.xl,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  formContent: {
+    padding: spacing.xl,
+    gap: spacing.xl,
+  },
+  inputGroup: {
+    gap: spacing.sm,
+  },
+  inputLabel: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
+  },
+  cleanInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    fontSize: typography.fontSizes.lg,
+    color: colors.brand.textPrimary,
+    minHeight: 56,
+  },
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  inputHelper: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    marginTop: spacing.xs,
+    lineHeight: typography.fontSizes.sm * 1.3,
+  },
+  salesSection: {
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    padding: spacing.xl,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    gap: spacing.xl,
+  },
+  cleanSectionTitle: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+  },
+  cleanSectionSubtitle: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    lineHeight: typography.fontSizes.md * 1.3,
+    marginTop: spacing.xs,
+  },
+  cleanDatePicker: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    minHeight: 56,
+  },
+  formActions: {
+    padding: spacing.xl,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  primaryButton: {
+    backgroundColor: colors.brand.primary,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  primaryButtonText: {
+    color: 'white',
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.semibold,
   },
 });
 

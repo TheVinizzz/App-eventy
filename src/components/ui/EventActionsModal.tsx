@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,12 +20,12 @@ import { Event } from '../../services/eventsService';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-// Definir altura máxima do modal (95% da tela para ir quase até o fim)
+// Definir altura máxima do modal ajustada para cada plataforma
 const MODAL_MAX_HEIGHT = Platform.OS === 'ios' 
   ? screenHeight * 0.95 
-  : screenHeight - (StatusBar.currentHeight || 0) - 20;
+  : screenHeight * 0.9; // Mais altura para Android
 
-const MODAL_TOP_OFFSET = Platform.OS === 'ios' ? 40 : 20;
+const MODAL_TOP_OFFSET = Platform.OS === 'ios' ? 40 : screenHeight * 0.1; // Menos offset para Android
 
 // Para animação de fechamento, usar altura maior que a tela
 const MODAL_CLOSE_OFFSET = screenHeight + 100;
@@ -312,7 +312,11 @@ const EventActionsModal: React.FC<EventActionsModalProps> = ({
       statusBarTranslucent
       onRequestClose={closeModal}
     >
-      <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.8)" translucent />
+      <StatusBar 
+        barStyle="light-content" 
+        backgroundColor="rgba(0,0,0,0.8)" 
+        translucent={Platform.OS === 'android'} 
+      />
       
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, { opacity: opacityAnim }]}>
@@ -323,6 +327,7 @@ const EventActionsModal: React.FC<EventActionsModalProps> = ({
       <Animated.View
         style={[
           styles.modalContainer,
+          Platform.OS === 'android' && styles.modalContainerAndroid,
           {
             transform: [
               { translateY: slideAnim },
@@ -365,7 +370,10 @@ const EventActionsModal: React.FC<EventActionsModalProps> = ({
         {/* Actions List - Área de scroll livre */}
         <ScrollView
           style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[
+            styles.scrollContent,
+            Platform.OS === 'android' && { flexGrow: 1 }
+          ]}
           showsVerticalScrollIndicator={false}
           bounces={true}
           scrollEventThrottle={16}
@@ -523,9 +531,20 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    ...Platform.select({
+      android: {
+        // Garantir que ocupe todo o espaço no Android
+        flexGrow: 1,
+      },
+    }),
   },
   scrollContent: {
     paddingTop: 8,
+    ...Platform.select({
+      android: {
+        paddingBottom: 0, // Remover padding extra no Android
+      },
+    }),
   },
   actionsContainer: {
     paddingHorizontal: 20,
@@ -588,7 +607,13 @@ const styles = StyleSheet.create({
     textShadowRadius: 1,
   },
   bottomSpacing: {
-    height: Platform.OS === 'ios' ? 50 : 40,
+    height: Platform.OS === 'ios' ? 50 : 0, // Sem espaçamento no Android
+  },
+  modalContainerAndroid: {
+    // Modal vai até o fundo da tela no Android
+    bottom: 0,
+    top: screenHeight * 0.1, // Começa em 10% da tela
+    height: undefined, // Remove altura fixa
   },
 });
 

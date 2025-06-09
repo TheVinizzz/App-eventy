@@ -184,12 +184,68 @@ const authService = {
     }
   },
   
-  // Update user data
-  updateUser: async (userData: User): Promise<void> => {
+  // Update user data locally
+  updateUserLocal: async (userData: User): Promise<void> => {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
     } catch (error) {
-      console.error('AuthService: Error updating user data:', error);
+      console.error('AuthService: Error updating user data locally:', error);
+      throw error;
+    }
+  },
+
+  // Update user profile on backend
+  updateUser: async (userData: Partial<User>): Promise<User> => {
+    try {
+      const token = await authService.getToken();
+      
+      if (!token) {
+        throw new Error('Token de autenticação não encontrado');
+      }
+
+      // Separar campos que vão para cada endpoint
+      const authFields = ['name', 'email', 'profileImage'];
+      const socialFields = ['bio', 'instagram', 'tiktok', 'facebook'];
+
+      const authData: any = {};
+      const socialData: any = {};
+
+      // Dividir os dados pelos endpoints corretos
+      Object.keys(userData).forEach(key => {
+        if (authFields.includes(key) && userData[key as keyof User] !== undefined) {
+          authData[key] = userData[key as keyof User];
+        } else if (socialFields.includes(key) && userData[key as keyof User] !== undefined) {
+          socialData[key] = userData[key as keyof User];
+        }
+      });
+
+      let updatedUser: User | null = null;
+
+      // Atualizar dados de autenticação se necessário
+      if (Object.keys(authData).length > 0) {
+        console.log('📤 AuthService: Updating auth data:', authData);
+        const authResponse = await api.put('/auth/profile', authData);
+        updatedUser = authResponse.data;
+      }
+
+      // Atualizar dados sociais se necessário  
+      if (Object.keys(socialData).length > 0) {
+        console.log('📤 AuthService: Updating social data:', socialData);
+        const socialResponse = await api.patch('/users/profile', socialData);
+        updatedUser = socialResponse.data;
+      }
+
+      if (updatedUser) {
+        // Salvar dados atualizados localmente
+        await authService.updateUserLocal(updatedUser);
+        console.log('✅ AuthService: Profile updated successfully');
+        return updatedUser;
+      } else {
+        throw new Error('Nenhum dado foi atualizado');
+      }
+
+    } catch (error: any) {
+      console.error('❌ AuthService: Error updating user profile:', error.response?.data || error.message);
       throw error;
     }
   },
@@ -205,7 +261,7 @@ const authService = {
       
       if (response.data) {
         // Update user in storage
-        await authService.updateUser(response.data);
+        await authService.updateUserLocal(response.data);
         return response.data;
       }
       

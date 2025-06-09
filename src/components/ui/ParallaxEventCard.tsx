@@ -112,7 +112,7 @@ export const ParallaxEventCard: React.FC<ParallaxEventCardProps> = ({
 
             {/* Card Content */}
             <View style={styles.content}>
-              <Text style={styles.title} numberOfLines={2}>
+              <Text style={styles.title} numberOfLines={1}>
                 {event.title}
               </Text>
               

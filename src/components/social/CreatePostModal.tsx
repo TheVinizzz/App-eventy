@@ -16,9 +16,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography, borderRadius } from '../../theme';
-import { socialService, CreatePostData } from '../../services/socialService';
+import socialService, { CreatePostData } from '../../services/socialService';
+import { eventCommunityService } from '../../services/eventCommunityService';
 import { searchEventsForMention, Event } from '../../services/eventsService';
-import { uploadEventImage } from '../../services/imageService';
+import { uploadPostImage } from '../../services/imageService';
 
 interface CreatePostModalProps {
   visible: boolean;
@@ -28,6 +29,11 @@ interface CreatePostModalProps {
     id: string;
     name: string;
     profileImage?: string;
+  };
+  isEventCommunity?: boolean;
+  eventInfo?: {
+    title: string;
+    id: string;
   };
 }
 
@@ -44,6 +50,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onClose,
   onPostCreated,
   user,
+  isEventCommunity = false,
+  eventInfo,
 }) => {
   const [content, setContent] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -84,7 +92,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     try {
       const events = await searchEventsForMention(query);
       
-      const suggestions: EventSuggestion[] = events.map((event: Event) => ({
+      const suggestions: EventSuggestion[] = events.map((event: any) => ({
         id: event.id,
         title: event.title,
         date: event.date,
@@ -164,27 +172,70 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       // Upload image to backend if selected
       if (selectedImage) {
         try {
-          uploadedImageUrl = await uploadEventImage(selectedImage);
+          console.log('🖼️ Starting image upload...', { selectedImage });
+          console.log('🖼️ Image URI type:', typeof selectedImage);
+          console.log('🖼️ Image URI length:', selectedImage.length);
+          
+          uploadedImageUrl = await uploadPostImage(selectedImage);
+          console.log('✅ Image upload successful:', uploadedImageUrl);
+          
+          if (!uploadedImageUrl || uploadedImageUrl.trim() === '') {
+            throw new Error('Upload returned empty URL');
+          }
         } catch (uploadError) {
-          console.error('Error uploading image:', uploadError);
-          Alert.alert('Erro', 'Não foi possível fazer upload da imagem. Tente novamente.');
+          console.error('❌ Error uploading image:', uploadError);
+          console.error('❌ Upload error details:', {
+            message: (uploadError as any)?.message,
+            stack: (uploadError as any)?.stack,
+            selectedImage,
+          });
+          Alert.alert('Erro', `Não foi possível fazer upload da imagem: ${(uploadError as any)?.message || 'Erro desconhecido'}. Tente novamente.`);
           return;
         }
       }
 
-      const postData: CreatePostData = {
-        content: content.trim(),
-        imageUrl: uploadedImageUrl,
-        eventId: selectedEvent?.id,
-      };
+      let newPost;
 
-      const newPost = await socialService.createPost(postData);
+      if (isEventCommunity && eventInfo) {
+        // Criar post na comunidade do evento
+        console.log('🎪 Creating community post...', {
+          eventId: eventInfo.id,
+          content: content.trim(),
+          imageUrl: uploadedImageUrl
+        });
+        
+        try {
+          newPost = await eventCommunityService.createPost(
+            eventInfo.id,
+            content.trim(),
+            uploadedImageUrl ? [uploadedImageUrl] : []
+          );
+          console.log('✅ Community post created successfully:', newPost);
+        } catch (communityError) {
+          console.error('❌ Error creating community post:', communityError);
+          throw communityError;
+        }
+      } else {
+        // Criar post geral
+        console.log('🌍 Creating general post...', {
+          content: content.trim(),
+          imageUrl: uploadedImageUrl
+        });
+        
+        const postData: CreatePostData = {
+          content: content.trim(),
+          imageUrl: uploadedImageUrl,
+          eventId: selectedEvent?.id,
+        };
+        newPost = await socialService.createPost(postData);
+        console.log('✅ General post created successfully:', newPost);
+      }
       
       onPostCreated(newPost);
       handleClose();
     } catch (error) {
-      console.error('Error creating post:', error);
-      Alert.alert('Erro', 'Não foi possível criar o post. Tente novamente.');
+      console.error('❌ Final error creating post:', error);
+      Alert.alert('Erro', `Não foi possível criar o post: ${(error as any)?.message || 'Erro desconhecido'}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -265,9 +316,37 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               </View>
               <View>
                 <Text style={styles.userName}>{user.name}</Text>
-                <Text style={styles.userSubtitle}>Compartilhando com a comunidade</Text>
+                <Text style={styles.userSubtitle}>
+                  {isEventCommunity 
+                    ? `Postando na comunidade do ${eventInfo?.title}`
+                    : 'Compartilhando com a comunidade'
+                  }
+                </Text>
               </View>
             </View>
+
+            {/* Event Community Banner */}
+            {isEventCommunity && eventInfo && (
+              <View style={styles.eventCommunityBanner}>
+                <LinearGradient
+                  colors={['rgba(255, 215, 0, 0.15)', 'rgba(255, 215, 0, 0.05)']}
+                  style={styles.eventBannerGradient}
+                >
+                  <View style={styles.eventBannerIcon}>
+                    <Ionicons name="shield-checkmark" size={20} color="#FFD700" />
+                  </View>
+                  <View style={styles.eventBannerContent}>
+                    <Text style={styles.eventBannerTitle}>Postagem Exclusiva</Text>
+                    <Text style={styles.eventBannerDescription}>
+                      Apenas participantes com ingresso do evento "{eventInfo.title}" poderão ver e interagir com este post
+                    </Text>
+                  </View>
+                  <View style={styles.eventBannerIcon}>
+                    <Ionicons name="people" size={20} color="#FFD700" />
+                  </View>
+                </LinearGradient>
+              </View>
+            )}
 
             {/* Selected Event */}
             {selectedEvent && (
@@ -577,5 +656,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: spacing.md,
     fontStyle: 'italic',
+  },
+  // Event Community Banner Styles
+  eventCommunityBanner: {
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+  },
+  eventBannerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  eventBannerIcon: {
+    marginHorizontal: spacing.sm,
+  },
+  eventBannerContent: {
+    flex: 1,
+    marginHorizontal: spacing.sm,
+  },
+  eventBannerTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.bold,
+    color: '#FFD700',
+    marginBottom: spacing.xs,
+  },
+  eventBannerDescription: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.brand.textSecondary,
+    lineHeight: 16,
   },
 }); 

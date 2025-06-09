@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,9 @@ import {
   RefreshControl,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SearchEventCard, LoadingScreen, SearchEventCardSkeleton } from '../components/ui';
@@ -20,9 +22,10 @@ import { colors, spacing, typography, borderRadius } from '../theme';
 import { fetchEvents, EventsQueryParams, PaginatedEvents, EventType, Event } from '../services/eventsService';
 import socialService, { UserProfile } from '../services/socialService';
 import UserSearchItem from '../components/UserSearchItem';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface FilterState {
   search: string;
@@ -68,8 +71,13 @@ const PRICE_RANGES = [
   { min: 201, max: undefined, label: 'Acima de R$ 200' },
 ];
 
+type SearchScreenRouteProp = RouteProp<RootStackParamList, 'Search'>;
+
 const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute<SearchScreenRouteProp>();
+  const { user } = useAuth();
+  const searchInputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTab, setSearchTab] = useState<'events' | 'users'>('events');
   const [filters, setFilters] = useState<FilterState>({
@@ -128,7 +136,14 @@ const SearchScreen: React.FC = () => {
         setLoading(true);
       }
 
+      console.log('🔍 SearchScreen: Searching users with query:', query);
+      
       const result = await socialService.searchUsers(query, 1, 20);
+      console.log('📊 SearchScreen: Users search result:', result.users.map(u => ({
+        name: u.name,
+        followersCount: u.followersCount,
+        isFollowing: u.isFollowing
+      })));
       
       setUsers({
         items: result.users,
@@ -138,8 +153,8 @@ const SearchScreen: React.FC = () => {
       });
       setHasSearched(true);
     } catch (error) {
-      console.error('Error searching users:', error);
-      Alert.alert('Erro', 'Não foi possível buscar os usuários. Tente novamente.');
+      console.error('❌ SearchScreen: Error searching users:', error);
+      setUsers({ items: [], total: 0, page: 1, hasMore: false });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -226,24 +241,55 @@ const SearchScreen: React.FC = () => {
 
   const handleFollowUser = async (user: UserProfile) => {
     try {
-      const result = await socialService.followUser(user.id);
-      
-      const updatedUsers = users.items.map(u => 
-        u.id === user.id 
-          ? { 
-              ...u, 
-              isFollowing: result.isFollowing,
-              followersCount: result.followersCount
-            }
-          : u
-      );
-      
+      // Optimistic update - update UI immediately
       setUsers(prev => ({
         ...prev,
-        items: updatedUsers
+        items: prev.items.map(u => 
+          u.id === user.id 
+            ? { 
+                ...u, 
+                isFollowing: !u.isFollowing,
+                followersCount: u.isFollowing ? u.followersCount - 1 : u.followersCount + 1
+              }
+            : u
+        )
+      }));
+
+      // Make API call based on current follow status
+      const result = user.isFollowing 
+        ? await socialService.unfollowUser(user.id)
+        : await socialService.followUser(user.id);
+      
+      // Update with real data from server
+      setUsers(prev => ({
+        ...prev,
+        items: prev.items.map(u => 
+          u.id === user.id 
+            ? { 
+                ...u, 
+                isFollowing: result.isFollowing,
+                followersCount: result.followersCount
+              }
+            : u
+        )
       }));
     } catch (error) {
-      console.error('Error following user:', error);
+      console.error('Error toggling follow status:', error);
+      
+      // Revert optimistic update on error
+      setUsers(prev => ({
+        ...prev,
+        items: prev.items.map(u => 
+          u.id === user.id 
+            ? { 
+                ...u, 
+                isFollowing: user.isFollowing, // Revert to original state
+                followersCount: user.followersCount // Revert to original count
+              }
+            : u
+        )
+      }));
+      
       Alert.alert('Erro', 'Não foi possível atualizar o status de seguidor');
     }
   };
@@ -276,32 +322,163 @@ const SearchScreen: React.FC = () => {
     return count;
   };
 
-  // Auto search when query changes
+  // Auto search when query changes (including when cleared)
   useEffect(() => {
-    if (searchQuery.trim().length > 0) {
-      const timeoutId = setTimeout(() => {
-        setFilters(prev => ({ ...prev, search: searchQuery }));
-        handleSearch();
-      }, 500);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [searchQuery]);
+    const timeoutId = setTimeout(() => {
+      // Execute search directly without updating filters to avoid loops
+      if (searchTab === 'events') {
+        const searchParams: EventsQueryParams = {
+          page: 1,
+          limit: 12,
+          search: searchQuery.trim() || undefined,
+          type: filters.type,
+          isPremium: filters.isPremium,
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
+          minPrice: filters.minPrice,
+          maxPrice: filters.maxPrice,
+        };
+        performSearch(searchParams);
+      } else if (user && (searchQuery.trim() || hasSearched)) {
+        // Only search users if user is logged in and there's a query or we've already searched
+        searchUsers(searchQuery.trim());
+      }
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchTab, user]);
+
+  // Initialize search from route parameters - executa sempre que a tela ganha foco
+  useFocusEffect(
+    useCallback(() => {
+      const params = route.params;
+      
+      if (params) {
+        // Set search query if provided
+        if (params.query) {
+          setSearchQuery(params.query);
+        }
+        
+        // Set filters if provided
+        if (params.type || params.filters) {
+          setFilters(prev => ({
+            ...prev,
+            search: params.query || '',
+            type: params.type as EventType || params.filters?.type as EventType || prev.type,
+            isPremium: params.filters?.isPremium ?? prev.isPremium,
+            minPrice: params.filters?.minPrice ?? prev.minPrice,
+            maxPrice: params.filters?.maxPrice ?? prev.maxPrice,
+          }));
+        }
+
+        // Auto focus input if requested (sem conflito com openFilters)
+        if (params.autoFocus && !params.openFilters) {
+          const timer = setTimeout(() => {
+            searchInputRef.current?.focus();
+          }, 500); // Aumentei o delay para garantir que a tela esteja completamente renderizada
+          return () => clearTimeout(timer);
+        }
+
+        // Open filters if requested (tem prioridade sobre autoFocus)
+        if (params.openFilters) {
+          const timer = setTimeout(() => {
+            setShowFilters(true);
+          }, 500); // Aumentei o delay para garantir que a tela esteja completamente renderizada
+          return () => clearTimeout(timer);
+        }
+      }
+    }, [route.params])
+  );
 
   // Load initial events when component mounts
   useEffect(() => {
     const loadInitialEvents = async () => {
+      const params = route.params;
+      
+      if (params) {
+        // Set initial values from route params
+        if (params.query) {
+          setSearchQuery(params.query);
+        }
+        if (params.type || params.filters) {
+          setFilters(prev => ({
+            ...prev,
+            search: params.query || '',
+            type: (params.type as EventType) || (params.filters?.type as EventType) || prev.type,
+            isPremium: params.filters?.isPremium ?? prev.isPremium,
+            minPrice: params.filters?.minPrice ?? prev.minPrice,
+            maxPrice: params.filters?.maxPrice ?? prev.maxPrice,
+          }));
+        }
+        
+        const searchParams: EventsQueryParams = {
+          page: 1,
+          limit: 12,
+          search: params.query || undefined,
+          type: (params.type as EventType) || (params.filters?.type as EventType) || undefined,
+          isPremium: params.filters?.isPremium,
+          minPrice: params.filters?.minPrice,
+          maxPrice: params.filters?.maxPrice,
+          sortBy: 'date',
+          sortOrder: 'asc',
+        };
+        
+        await performSearch(searchParams);
+      } else {
+        // Load all events if no specific params
+        const initialSearchParams: EventsQueryParams = {
+          page: 1,
+          limit: 12,
+          sortBy: 'date',
+          sortOrder: 'asc',
+        };
+        await performSearch(initialSearchParams);
+      }
+    };
+
+    loadInitialEvents();
+  }, []); // Only run once on mount
+
+  // Handle tab changes - clear filters and load appropriate data
+  useEffect(() => {
+    // Clear filters when switching tabs
+    setFilters({
+      search: '',
+      sortBy: 'date',
+      sortOrder: 'asc',
+    });
+    
+    // Clear search query
+    setSearchQuery('');
+    
+    // Reset search state
+    setHasSearched(false);
+    
+    if (searchTab === 'events') {
+      // Load all events when switching to events tab
       const searchParams: EventsQueryParams = {
         page: 1,
         limit: 12,
         sortBy: 'date',
         sortOrder: 'asc',
       };
-      
-      await performSearch(searchParams);
-    };
+      performSearch(searchParams);
+    } else if (user) {
+      // Clear users list when switching to users tab (only if user is logged in)
+      setUsers({
+        items: [],
+        total: 0,
+        page: 1,
+        hasMore: false,
+      });
+    }
+  }, [searchTab]);
 
-    loadInitialEvents();
-  }, []); // Empty dependency array means this runs only once when component mounts
+  // Ensure non-logged users always stay on events tab
+  useEffect(() => {
+    if (!user && searchTab !== 'events') {
+      setSearchTab('events');
+    }
+  }, [user, searchTab]);
 
   const renderSkeletonList = () => (
     <FlatList
@@ -368,15 +545,15 @@ const SearchScreen: React.FC = () => {
       return (
         <View style={styles.emptyState}>
           <Ionicons 
-            name={searchTab === 'events' ? "calendar" : "people"} 
+            name={(!user || searchTab === 'events') ? "calendar" : "people"} 
             size={64} 
             color={colors.brand.textSecondary} 
           />
           <Text style={styles.emptyStateTitle}>
-            {searchTab === 'events' ? 'Eventos Disponíveis' : 'Buscar Usuários'}
+            {(!user || searchTab === 'events') ? 'Eventos Disponíveis' : 'Buscar Usuários'}
           </Text>
           <Text style={styles.emptyStateText}>
-            {searchTab === 'events' 
+            {(!user || searchTab === 'events') 
               ? 'Explore os eventos disponíveis ou use a busca para encontrar algo específico'
               : 'Digite um nome ou termo para encontrar outros usuários na plataforma'
             }
@@ -389,7 +566,7 @@ const SearchScreen: React.FC = () => {
       <View style={styles.emptyState}>
         <Ionicons name="search-outline" size={64} color={colors.brand.textSecondary} />
         <Text style={styles.emptyStateTitle}>
-          {searchTab === 'events' ? 'Nenhum evento encontrado' : 'Nenhum usuário encontrado'}
+          {(!user || searchTab === 'events') ? 'Nenhum evento encontrado' : 'Nenhum usuário encontrado'}
         </Text>
         <Text style={styles.emptyStateText}>
           Tente ajustar os filtros ou usar termos de busca diferentes
@@ -638,8 +815,9 @@ const SearchScreen: React.FC = () => {
           <View style={styles.searchBar}>
             <Ionicons name="search" size={20} color={colors.brand.textSecondary} />
             <TextInput
+              ref={searchInputRef}
               style={styles.searchInput}
-              placeholder="Buscar eventos, artistas, locais..."
+              placeholder={!user ? "Buscar eventos, artistas, locais..." : (searchTab === 'events' ? "Buscar eventos, artistas, locais..." : "Buscar usuários...")}
               placeholderTextColor={colors.brand.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -653,50 +831,90 @@ const SearchScreen: React.FC = () => {
             )}
           </View>
 
-          <TouchableOpacity 
-            style={styles.filterButton}
-            onPress={() => setShowFilters(true)}
-          >
-            <Ionicons name="options" size={20} color={colors.brand.primary} />
-            {getActiveFiltersCount() > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{getActiveFiltersCount()}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* Filter button - only show for events tab */}
+          {searchTab === 'events' && (
+            <TouchableOpacity 
+              style={styles.filterButton}
+              onPress={() => setShowFilters(true)}
+            >
+              <Ionicons name="options" size={20} color={colors.brand.primary} />
+              {getActiveFiltersCount() > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{getActiveFiltersCount()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      {/* Search Tabs */}
-      <View style={styles.searchTabs}>
-        <TouchableOpacity
-          style={[styles.searchTab, searchTab === 'events' && styles.searchTabActive]}
-          onPress={() => setSearchTab('events')}
-        >
-          <Ionicons 
-            name="calendar-outline" 
-            size={20} 
-            color={searchTab === 'events' ? colors.brand.primary : colors.brand.textSecondary} 
-          />
-          <Text style={[styles.searchTabText, searchTab === 'events' && styles.searchTabTextActive]}>
-            Eventos
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.searchTab, searchTab === 'users' && styles.searchTabActive]}
-          onPress={() => setSearchTab('users')}
-        >
-          <Ionicons 
-            name="people-outline" 
-            size={20} 
-            color={searchTab === 'users' ? colors.brand.primary : colors.brand.textSecondary} 
-          />
-          <Text style={[styles.searchTabText, searchTab === 'users' && styles.searchTabTextActive]}>
-            Usuários
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* Search Tabs - Only show for logged in users */}
+      {user && (
+        <View style={styles.searchTabs}>
+          <TouchableOpacity
+            style={[styles.searchTab, searchTab === 'events' && styles.searchTabActive]}
+            onPress={() => setSearchTab('events')}
+          >
+            <Ionicons 
+              name="calendar-outline" 
+              size={20} 
+              color={searchTab === 'events' ? colors.brand.primary : colors.brand.textSecondary} 
+            />
+            <Text style={[styles.searchTabText, searchTab === 'events' && styles.searchTabTextActive]}>
+              Eventos
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.searchTab, searchTab === 'users' && styles.searchTabActive]}
+            onPress={() => setSearchTab('users')}
+          >
+            <Ionicons 
+              name="people-outline" 
+              size={20} 
+              color={searchTab === 'users' ? colors.brand.primary : colors.brand.textSecondary} 
+            />
+            <Text style={[styles.searchTabText, searchTab === 'users' && styles.searchTabTextActive]}>
+              Usuários
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Active Filters from Navigation */}
+      {route.params && (route.params.query || route.params.type || route.params.category) && (
+        <View style={styles.activeFiltersSection}>
+          <Text style={styles.activeFiltersTitle}>Filtros aplicados:</Text>
+          <View style={styles.activeFiltersContainer}>
+            {route.params.query && (
+              <View style={styles.activeFilterChip}>
+                <Ionicons name="search" size={14} color={colors.brand.background} />
+                <Text style={styles.activeFilterText}>"{route.params.query}"</Text>
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close" size={14} color={colors.brand.background} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {route.params.type && (
+              <View style={styles.activeFilterChip}>
+                <Ionicons name="pricetag" size={14} color={colors.brand.background} />
+                <Text style={styles.activeFilterText}>
+                  {route.params.type === 'SHOW' ? 'Shows' : 
+                   route.params.type === 'SPORTS' ? 'Esportes' : 
+                   route.params.type === 'THEATER' ? 'Teatro' : 
+                   route.params.type}
+                </Text>
+              </View>
+            )}
+            {route.params.category && (
+              <View style={styles.activeFilterChip}>
+                <Ionicons name="folder" size={14} color={colors.brand.background} />
+                <Text style={styles.activeFilterText}>{route.params.category}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Quick Filters - Only show for events */}
       {searchTab === 'events' && (
@@ -710,30 +928,6 @@ const SearchScreen: React.FC = () => {
             contentContainerStyle={styles.quickFiltersContainer}
             bounces={false}
           />
-        </View>
-      )}
-
-      {/* Results Info */}
-      {hasSearched && (
-        <View style={styles.resultsInfo}>
-          <Text style={styles.resultsText}>
-            {searchTab === 'events' 
-              ? (events.total > 0 
-                  ? `${events.total} evento${events.total > 1 ? 's' : ''} encontrado${events.total > 1 ? 's' : ''}`
-                  : 'Nenhum evento encontrado'
-                )
-              : (users.total > 0 
-                  ? `${users.total} usuário${users.total > 1 ? 's' : ''} encontrado${users.total > 1 ? 's' : ''}`
-                  : 'Nenhum usuário encontrado'
-                )
-            }
-          </Text>
-          
-          {searchQuery.trim() && (
-            <Text style={styles.searchTermText}>
-              para "{searchQuery}"
-            </Text>
-          )}
         </View>
       )}
 
@@ -889,22 +1083,7 @@ const styles = StyleSheet.create({
     color: colors.brand.background,
     fontWeight: typography.fontWeights.bold,
   },
-  resultsInfo: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.opacity.cardBorder,
-  },
-  resultsText: {
-    fontSize: typography.fontSizes.md,
-    fontWeight: typography.fontWeights.semibold,
-    color: colors.brand.textPrimary,
-  },
-  searchTermText: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.brand.textSecondary,
-    marginTop: spacing.xs,
-  },
+
   eventsList: {
     paddingVertical: spacing.lg,
   },
@@ -1045,6 +1224,38 @@ const styles = StyleSheet.create({
   searchTabTextActive: {
     color: colors.brand.primary,
     fontWeight: typography.fontWeights.semibold,
+  },
+  activeFiltersSection: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.brand.darkGray,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.opacity.cardBorder,
+  },
+  activeFiltersTitle: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  activeFiltersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  activeFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.brand.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    gap: spacing.xs,
+  },
+  activeFilterText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.background,
+    fontWeight: typography.fontWeights.medium,
   },
 });
 

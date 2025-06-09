@@ -236,6 +236,12 @@ const EventDashboardScreen: React.FC<EventDashboardScreenProps> = () => {
         <View style={styles.headerButtons}>
           <TouchableOpacity 
             style={styles.headerIconButton}
+            onPress={() => Alert.alert('EvenLove', 'Funcionalidade de gerenciamento do EvenLove em breve!')}
+          >
+            <Ionicons name="heart-outline" size={22} color="#FF6B6B" />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.headerIconButton}
             onPress={() => navigation.navigate('EventAffiliates', { eventId })}
           >
             <Ionicons name="people-outline" size={22} color="#FFD700" />

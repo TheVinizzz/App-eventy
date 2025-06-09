@@ -120,7 +120,7 @@ const TrendingEvents: React.FC<TrendingEventsProps> = ({
         >
           <View style={styles.trendingContent}>
             <View style={styles.trendingInfo}>
-              <Text style={styles.trendingTitle} numberOfLines={2}>
+              <Text style={styles.trendingTitle} numberOfLines={1}>
                 {event.title}
               </Text>
               <Text style={styles.trendingCategory}>

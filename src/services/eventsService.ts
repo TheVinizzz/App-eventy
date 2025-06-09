@@ -49,6 +49,12 @@ export interface Event {
   published?: boolean;
   maxTicketsPerPurchase?: number;
   createdById?: string;
+  createdBy?: {
+    id: string;
+    name: string;
+    email: string;
+    profileImage?: string;
+  };
   createdAt?: string;
   updatedAt?: string;
   lowestPrice?: number;
@@ -471,15 +477,36 @@ class EventsService {
     imageUrl?: string;
   }>> {
     try {
-      const response = await api.get('/events/search/mention', { 
-        params: { q: query } 
+      if (!query || query.trim().length < 1) {
+        return [];
+      }
+
+      const response = await api.get('/events', { 
+        params: { 
+          search: query.trim(),
+          limit: 10,
+          sortBy: 'title',
+          sortOrder: 'asc',
+          // Buscar apenas eventos futuros para menções
+          startDate: new Date().toISOString()
+        } 
       });
-      return response.data;
+      
+      // O backend retorna um objeto paginado com items
+      const events = response.data.items || response.data;
+      
+      return events.map((event: any) => ({
+        id: event.id,
+        title: event.title,
+        date: event.date,
+        location: event.venue?.city || event.venue?.name || event.location || 'Local não informado',
+        imageUrl: event.imageUrl
+      }));
     } catch (error) {
       console.error('Failed to search events for mention:', error);
       return [];
+    }
   }
-}
 
 /**
    * Get trending events

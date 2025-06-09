@@ -41,6 +41,7 @@ import {
   TabsSkeleton,
   EventCardSkeleton 
 } from '../components/ui/SkeletonLoader';
+import useCacheInvalidation from '../hooks/useCacheInvalidation';
 
 const { width: screenWidth } = Dimensions.get('window');
 const CARD_MARGIN = 16;
@@ -78,6 +79,13 @@ const MyEventsScreen: React.FC = () => {
 
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const { user, isAuthenticated } = useAuth();
+  
+  // Cache invalidation hook
+  const { invalidateAfterEventCreation } = useCacheInvalidation({
+    onEventCreated: async () => {
+      await loadEvents();
+    },
+  });
 
   const loadEvents = useCallback(async () => {
     if (!isAuthenticated) {
@@ -561,7 +569,7 @@ const MyEventsScreen: React.FC = () => {
         {/* Event Content */}
         <View style={styles.eventContent}>
           <View style={styles.eventHeader}>
-            <Text style={styles.eventTitle} numberOfLines={2}>{event.title}</Text>
+            <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
             <Text style={styles.eventTime}>{formatTime(event.date)}</Text>
           </View>
 

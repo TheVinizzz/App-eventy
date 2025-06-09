@@ -100,7 +100,7 @@ export const EventCard: React.FC<EventCardProps> = ({
             <Text style={[
               styles.title, 
               isCompact && styles.compactTitle
-            ]} numberOfLines={isCompact ? 1 : 2}>
+            ]} numberOfLines={1}>
               {event.title}
             </Text>
             

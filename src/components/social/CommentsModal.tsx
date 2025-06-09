@@ -23,6 +23,7 @@ import { BlurView } from 'expo-blur';
 import { colors, spacing, typography, borderRadius } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
 import socialService, { Post } from '../../services/socialService';
+import { eventCommunityService } from '../../services/eventCommunityService';
 
 const { width, height } = Dimensions.get('window');
 
@@ -35,10 +36,10 @@ interface Comment {
     name: string;
     profileImage?: string;
   };
-  _count: {
+  _count?: {
     likes: number;
   };
-  isLiked: boolean;
+  isLiked?: boolean;
 }
 
 interface CommentsModalProps {
@@ -47,6 +48,8 @@ interface CommentsModalProps {
   post: Post;
   onUserPress?: (userId: string) => void;
   onCommentAdded?: (postId: string, newCommentCount: number) => void;
+  isEventCommunity?: boolean;
+  eventId?: string;
 }
 
 const CommentsModal: React.FC<CommentsModalProps> = ({
@@ -55,6 +58,8 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   post,
   onUserPress,
   onCommentAdded,
+  isEventCommunity = false,
+  eventId,
 }) => {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -94,10 +99,25 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
   const loadComments = async () => {
     try {
       setLoading(true);
-      console.log('Loading comments for post:', post.id);
-      const commentsData = await socialService.getPostComments(post.id);
+      console.log('Loading comments for post:', post.id, 'isEventCommunity:', isEventCommunity);
+      
+      let commentsData;
+      if (isEventCommunity) {
+        commentsData = await eventCommunityService.getPostComments(post.id);
+      } else {
+        commentsData = await socialService.getPostComments(post.id);
+      }
+      
       console.log('Comments loaded:', commentsData);
-      setComments(commentsData || []);
+      
+      // Normalizar estrutura dos comentários para garantir compatibilidade
+      const normalizedComments = (commentsData || []).map(comment => ({
+        ...comment,
+        _count: comment._count || { likes: 0 },
+        isLiked: comment.isLiked || false
+      }));
+      
+      setComments(normalizedComments);
     } catch (error) {
       console.error('Error loading comments:', error);
       setComments([]);
@@ -118,8 +138,23 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
 
     try {
       setSubmitting(true);
-      const comment = await socialService.addComment(post.id, newComment.trim());
-      setComments(prev => [comment, ...prev]);
+      console.log('Adding comment to post:', post.id, 'isEventCommunity:', isEventCommunity);
+      
+      let comment;
+      if (isEventCommunity) {
+        comment = await eventCommunityService.addComment(post.id, newComment.trim());
+      } else {
+        comment = await socialService.addComment(post.id, newComment.trim());
+      }
+      
+      // Normalizar estrutura do comentário
+      const normalizedComment = {
+        ...comment,
+        _count: comment._count || { likes: 0 },
+        isLiked: comment.isLiked || false
+      };
+      
+      setComments(prev => [normalizedComment, ...prev]);
       setNewComment('');
       
       // Dismiss keyboard after sending
@@ -143,14 +178,25 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
 
   const handleLikeComment = async (commentId: string) => {
     try {
-      const result = await socialService.likeComment(commentId);
+      let result;
+      if (isEventCommunity) {
+        // Para posts de comunidade, implementar quando disponível no backend
+        console.log('Like comment in event community not implemented yet');
+        return;
+      } else {
+        result = await socialService.likeComment(commentId);
+      }
+      
       setComments(prev => 
         prev.map(comment => 
           comment.id === commentId 
             ? { 
                 ...comment, 
                 isLiked: result.isLiked,
-                _count: { likes: result.likesCount }
+                _count: { 
+                  ...comment._count,
+                  likes: result.likesCount || 0
+                }
               }
             : comment
         )
@@ -210,13 +256,13 @@ const CommentsModal: React.FC<CommentsModalProps> = ({
             onPress={() => handleLikeComment(item.id)}
           >
             <Ionicons 
-              name={item.isLiked ? "heart" : "heart-outline"} 
+              name={(item.isLiked || false) ? "heart" : "heart-outline"} 
               size={16} 
-              color={item.isLiked ? colors.brand.error : colors.brand.textSecondary} 
+              color={(item.isLiked || false) ? colors.brand.error : colors.brand.textSecondary} 
             />
-            {item._count.likes > 0 && (
-              <Text style={[styles.commentLikeText, item.isLiked && styles.commentLikedText]}>
-                {item._count.likes}
+            {(item._count?.likes || 0) > 0 && (
+                              <Text style={[styles.commentLikeText, (item.isLiked || false) && styles.commentLikedText]}>
+                {item._count?.likes || 0}
               </Text>
             )}
           </TouchableOpacity>

@@ -66,25 +66,25 @@ export const usePosts = (eventId?: string): UsePostsReturn => {
     }
   }, [eventId]);
 
-  // Instagram-style auto refresh
-  useEffect(() => {
-    const startAutoRefresh = () => {
-      refreshTimeoutRef.current = setTimeout(() => {
-        if (!loading && !refreshing) {
-          silentRefresh();
-        }
-        startAutoRefresh();
-      }, AUTO_REFRESH_INTERVAL);
-    };
+  // Desativar auto-refresh temporariamente para evitar piscamento
+  // useEffect(() => {
+  //   const startAutoRefresh = () => {
+  //     refreshTimeoutRef.current = setTimeout(() => {
+  //       if (!loading && !refreshing) {
+  //         silentRefresh();
+  //       }
+  //       startAutoRefresh();
+  //     }, AUTO_REFRESH_INTERVAL);
+  //   };
 
-    startAutoRefresh();
+  //   startAutoRefresh();
 
-    return () => {
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-    };
-  }, [loading, refreshing, silentRefresh]);
+  //   return () => {
+  //     if (refreshTimeoutRef.current) {
+  //       clearTimeout(refreshTimeoutRef.current);
+  //     }
+  //   };
+  // }, [loading, refreshing, silentRefresh]);
 
   const loadPosts = useCallback(async () => {
     try {

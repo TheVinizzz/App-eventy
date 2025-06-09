@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from 'react-native';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -15,6 +15,13 @@ const AuthModal: React.FC<AuthModalProps> = ({
   initialMode = 'login' 
 }) => {
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+
+  // Sincronizar o modo interno quando initialMode ou visibilidade mudam
+  useEffect(() => {
+    if (visible) {
+      setMode(initialMode);
+    }
+  }, [visible, initialMode]);
 
   const handleSwitchToRegister = () => setMode('register');
   const handleSwitchToLogin = () => setMode('login');

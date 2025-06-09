@@ -47,7 +47,7 @@ export const TicketModal: React.FC<TicketModalProps> = ({
   const slideX = useRef(new Animated.Value(0)).current;
   const nextSlideX = useRef(new Animated.Value(screenWidth)).current;
 
-  const currentTicket = tickets[currentIndex];
+  const currentTicket = tickets && tickets.length > 0 ? tickets[Math.min(currentIndex, tickets.length - 1)] : null;
 
   // Brightness management
   useEffect(() => {
@@ -245,8 +245,10 @@ export const TicketModal: React.FC<TicketModalProps> = ({
   const handleShareTicket = async () => {
     try {
       const ticket = tickets[currentIndex];
+      if (!ticket || !ticket.event) return;
+      
       await Share.share({
-        message: `🎫 Meu ingresso para ${ticket.event.title}\n\nID: ${ticket.id}\n\nEvento: ${ticket.event.title}\nData: ${formatDate(ticket.event.date)}\nLocal: ${ticket.event.venue?.name || ticket.event.location}`,
+        message: `🎫 Meu ingresso para ${ticket.event.title}\n\nID: ${ticket.id}\n\nEvento: ${ticket.event.title}\nData: ${formatDate(ticket.event.date)}\nLocal: ${ticket.event.venue?.name || 'Local não informado'}`,
         title: 'Compartilhar Ingresso',
       });
     } catch (error) {
@@ -323,9 +325,9 @@ export const TicketModal: React.FC<TicketModalProps> = ({
     }).format(price);
   };
 
-  const statusConfig = getStatusConfig(currentTicket.status);
-
   if (!currentTicket) return null;
+
+  const statusConfig = getStatusConfig(currentTicket.status);
 
   return (
     <Modal
@@ -427,7 +429,7 @@ export const TicketModal: React.FC<TicketModalProps> = ({
                         styles.eventTitle,
                         currentTicket.status === TicketStatus.USED && styles.eventTitleUsed
                       ]}>
-                        {currentTicket.event.title}
+                        {currentTicket.event?.title || 'Evento sem título'}
                       </Text>
                     </View>
 
@@ -482,7 +484,7 @@ export const TicketModal: React.FC<TicketModalProps> = ({
                               styles.detailValue,
                               currentTicket.status === TicketStatus.USED && styles.detailValueUsed
                             ]}>
-                              {formatDate(currentTicket.event.date)}
+                              {currentTicket.event?.date ? formatDate(currentTicket.event.date) : 'Data não disponível'}
                             </Text>
                           </View>
                         </View>
@@ -499,9 +501,9 @@ export const TicketModal: React.FC<TicketModalProps> = ({
                               styles.detailValue,
                               currentTicket.status === TicketStatus.USED && styles.detailValueUsed
                             ]}>
-                              {currentTicket.event.venue?.name || currentTicket.event.location}
+                              {currentTicket.event?.venue?.name || 'Local não informado'}
                             </Text>
-                            {currentTicket.event.venue?.address && (
+                            {currentTicket.event?.venue?.address && (
                               <Text style={[
                                 styles.detailSubValue,
                                 currentTicket.status === TicketStatus.USED && styles.detailValueUsed

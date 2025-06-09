@@ -29,6 +29,14 @@ import { fetchEventById, Event, TicketBatch } from '../services/eventsService';
 import { useApiData } from '../hooks/useApiData';
 import { getCacheConfig } from '../config/performance';
 import { RootStackParamList } from '../navigation/types';
+import { eventCommunityService } from '../services/eventCommunityService';
+import { favoritesService } from '../services/favoritesService';
+import EventRatingService, { EventStatistics } from '../services/EventRatingService';
+import NotificationService from '../services/NotificationService';
+import CustomNotificationService, { EventNotificationData } from '../services/CustomNotificationService';
+import { autoRatingNotificationService } from '../services/AutoRatingNotificationService';
+import { eventTicketNotificationService } from '../services/EventTicketNotificationService';
+import * as Haptics from 'expo-haptics';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const IMAGE_HEIGHT = screenHeight * 0.45;
@@ -49,14 +57,25 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
   const route = useRoute<EventDetailsScreenRouteProp>();
   const navigation = useNavigation<EventDetailsScreenNavigationProp>();
   const { eventId } = route.params;
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
   const [selectedTickets, setSelectedTickets] = useState<SelectedTickets>({});
   const [showImageGallery, setShowImageGallery] = useState(false);
-  const [showTicketModal, setShowTicketModal] = useState(false);
+  const [isJoiningCommunity, setIsJoiningCommunity] = useState(false);
+  const [hasTicket, setHasTicket] = useState(false);
+  const [isLoadingFavorite, setIsLoadingFavorite] = useState(false);
+  const [eventStats, setEventStats] = useState<EventStatistics | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  // Removed showTicketModal - now using navigation to Checkout
+
+  // Services
+  const eventRatingService = new EventRatingService();
+  const notificationService = NotificationService.getInstance();
+  const customNotificationService = CustomNotificationService.getInstance();
 
   // Use the caching system for event details
   const {
@@ -73,6 +92,64 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
       refetchOnMount: true,
     }
   );
+
+  // Setup notification listener
+  useEffect(() => {
+    // Limpar tickets temporários expirados automaticamente
+    const ratingService = EventRatingService.getInstance();
+    ratingService.cleanExpiredTempTickets();
+
+    const subscription = customNotificationService.setupNotificationListener((data) => {
+      if (data.eventId === eventId || data.eventId === event?.id) {
+        if (data.type === 'rate_event') {
+          // Usuário tocou na notificação para avaliar este evento
+          navigation.navigate('Rating', {
+            eventId: data.eventId,
+            eventTitle: data.eventTitle,
+          });
+        } else if (data.type === 'event_reminder') {
+          // Usuário tocou na notificação de lembrete de ingresso
+          // Navegar para a tela principal e mostrar alert sobre o evento
+          console.log('📱 Usuário clicou em notificação de lembrete do evento:', data.eventTitle);
+          navigation.navigate('Main');
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, [eventId, navigation]);
+
+  // Check if event is in favorites when event loads
+  useEffect(() => {
+    if (event) {
+      checkFavoriteStatus();
+      loadEventStatistics();
+    }
+  }, [event]);
+
+  const checkFavoriteStatus = async () => {
+    if (!event) return;
+    try {
+      const isEventFavorite = await favoritesService.isFavorite(event.id);
+      setIsFavorite(isEventFavorite);
+    } catch (error) {
+      console.error('Error checking favorite status:', error);
+    }
+  };
+
+  const loadEventStatistics = async () => {
+    if (!event) return;
+    
+    setIsLoadingStats(true);
+    try {
+      const stats = await eventRatingService.getEventStatistics(event.id);
+      setEventStats(stats);
+    } catch (error) {
+      console.error('Error loading event statistics:', error);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
 
   // HTML rendering configuration
   const htmlContentWidth = windowWidth - (spacing.xl * 2);
@@ -261,9 +338,42 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
     }
   };
 
-  const handleFavorite = () => {
-    setIsFavorite(!isFavorite);
-    // TODO: Implement favorite functionality with backend
+  const handleFavorite = async () => {
+    if (!event) return;
+    
+    if (!isAuthenticated) {
+      Alert.alert(
+        'Login necessário',
+        'Você precisa estar logado para favoritar eventos.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Fazer Login', onPress: () => navigation.navigate('Login') },
+        ]
+      );
+      return;
+    }
+
+    try {
+      setIsLoadingFavorite(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      const result = await favoritesService.toggleFavorite(event);
+      
+      setIsFavorite(result.isFavorite);
+      
+      // Feedback haptic apenas
+      if (result.action === 'added') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Erro', 'Não foi possível atualizar os favoritos. Tente novamente.');
+    } finally {
+      setIsLoadingFavorite(false);
+    }
   };
 
   const handleOpenMaps = () => {
@@ -296,8 +406,45 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
       return;
     }
 
-    setShowTicketModal(true);
+    // Navigate to checkout with selected tickets
+    navigation.navigate('Checkout', {
+      eventId: event!.id,
+      selectedTickets: selectedTickets,
+    });
   };
+
+  // Função chamada quando a compra é concluída com sucesso
+  const handlePurchaseComplete = async (purchaseData: {
+    eventId: string;
+    userId: string;
+    userEmail: string;
+    quantity: number;
+    totalAmount: number;
+  }) => {
+    if (!event) return;
+
+    try {
+      // Enviar notificação de confirmação
+      await notificationService.sendPurchaseConfirmationNotification(
+        event.title,
+        purchaseData.quantity,
+        purchaseData.totalAmount
+      );
+
+      // Agendar notificações automáticas para ingressos e avaliações
+      await eventTicketNotificationService.scheduleNotificationsForUserTickets(purchaseData.userId);
+      await autoRatingNotificationService.scheduleNotificationsForUserTickets(purchaseData.userId);
+
+      // Recarregar estatísticas
+      await loadEventStatistics();
+
+      console.log('✅ Compra processada com sucesso e notificações automáticas agendadas');
+    } catch (error) {
+      console.error('❌ Erro ao processar pós-compra:', error);
+    }
+  };
+
+
 
   const updateTicketQuantity = (batchId: string, quantity: number) => {
     console.log('Updating ticket quantity:', { batchId, quantity });
@@ -434,12 +581,20 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
           </TouchableOpacity>
           
           <View style={styles.rightControls}>
-            <TouchableOpacity style={styles.controlButton} onPress={handleFavorite}>
-              <Ionicons 
-                name={isFavorite ? "heart" : "heart-outline"} 
-                size={24} 
-                color={isFavorite ? colors.brand.primary : "white"} 
-              />
+            <TouchableOpacity 
+              style={styles.controlButton} 
+              onPress={handleFavorite}
+              disabled={isLoadingFavorite}
+            >
+              {isLoadingFavorite ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Ionicons 
+                  name={isFavorite ? "heart" : "heart-outline"} 
+                  size={24} 
+                  color={isFavorite ? colors.brand.primary : "white"} 
+                />
+              )}
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.controlButton} onPress={handleShare}>
@@ -657,32 +812,40 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
   const renderEventStats = () => {
     if (!event) return null;
 
+    // Use stats reais das novas propriedades - adequadas para compradores
     const stats = [
       {
         icon: 'people',
         label: 'Participantes',
-        value: event.attendees ? `${event.attendees}+` : '0',
+        value: eventStats ? `${eventStats.totalParticipants}+` : '0+',
       },
       {
         icon: 'star',
         label: 'Avaliação',
-        value: event.rating ? event.rating.toFixed(1) : 'N/A',
+        value: eventStats 
+          ? eventStats.averageRating.toFixed(1)
+          : '5.0',
       },
       {
         icon: 'ticket',
         label: 'Ingressos',
-        value: event.ticketBatches?.length || 0,
+        value: eventStats ? eventStats.totalTicketsSold.toString() : '0',
       },
       {
-        icon: 'time',
-        label: 'Duração',
-        value: event.endDate ? 'Multi-dia' : '1 dia',
+        icon: 'heart',
+        label: 'Interessados',
+        value: eventStats ? `${eventStats.interestedUsers}+` : '20+',
       },
     ];
 
     return (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Estatísticas</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Estatísticas</Text>
+          {isLoadingStats && (
+            <ActivityIndicator size="small" color={colors.brand.primary} />
+          )}
+        </View>
         <View style={styles.statsContainer}>
           {stats.map((stat, index) => (
             <View key={index} style={styles.statItem}>
@@ -694,6 +857,17 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
             </View>
           ))}
         </View>
+        
+        {/* Info sobre avaliações */}
+        {eventStats && eventStats.totalReviews > 0 && (
+          <View style={styles.ratingsInfo}>
+            <Text style={styles.ratingsInfoText}>
+              {eventStats.totalReviews} avaliação{eventStats.totalReviews > 1 ? 'ões' : ''} de quem participou
+            </Text>
+          </View>
+        )}
+
+
       </View>
     );
   };
@@ -855,14 +1029,14 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
               </View>
             </TouchableOpacity>
             
-            {event.attendees && event.attendees > 0 && (
+            {event.attendeesCount && event.attendeesCount > 0 && (
               <View style={styles.eventInfoRow}>
                 <View style={styles.eventInfoItem}>
                   <Ionicons name="people" size={20} color={colors.brand.primary} />
                   <View style={styles.eventInfoText}>
                     <Text style={styles.eventInfoLabel}>Participantes</Text>
                     <Text style={styles.eventInfoValue}>
-                      {event.attendees} {event.attendees === 1 ? 'pessoa' : 'pessoas'} confirmadas
+                      {event.attendeesCount} {event.attendeesCount === 1 ? 'pessoa' : 'pessoas'} confirmadas
                     </Text>
                   </View>
                 </View>
@@ -893,18 +1067,54 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
           </View>
           
           {/* Organizer Info */}
-          {event.createdById && (
+          {(event.createdBy || event.createdById) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Organizador</Text>
-              <View style={styles.organizerCard}>
-                <View style={styles.organizerAvatar}>
-                  <Ionicons name="person" size={24} color={colors.brand.primary} />
+              <TouchableOpacity 
+                style={styles.organizerCard}
+                onPress={() => {
+                  const organizerId = event.createdBy?.id || event.createdById;
+                  if (organizerId && organizerId !== user?.id) {
+                    navigation.navigate('UserProfile', { userId: organizerId });
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.organizerAvatarContainer}>
+                  {event.createdBy?.profileImage ? (
+                    <Image 
+                      source={{ uri: event.createdBy.profileImage }} 
+                      style={styles.organizerAvatar}
+                    />
+                  ) : (
+                    <View style={styles.organizerAvatarPlaceholder}>
+                      <Text style={styles.organizerAvatarText}>
+                        {event.createdBy?.name?.charAt(0)?.toUpperCase() || 'O'}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 <View style={styles.organizerInfo}>
-                  <Text style={styles.organizerName}>Organizador do Evento</Text>
-                  <Text style={styles.organizerRole}>Criador</Text>
+                  <Text style={styles.organizerName}>
+                    {event.createdBy?.name || 'Organizador do Evento'}
+                  </Text>
+                  <Text style={styles.organizerEmail}>
+                    {event.createdBy?.email || 'Criador do evento'}
+                  </Text>
+                  {(event.createdBy?.id || event.createdById) && 
+                   (event.createdBy?.id || event.createdById) !== user?.id && (
+                    <Text style={styles.organizerViewProfile}>
+                      Toque para ver perfil
+                    </Text>
+                  )}
                 </View>
-              </View>
+                {(event.createdBy?.id || event.createdById) && 
+                 (event.createdBy?.id || event.createdById) !== user?.id && (
+                  <View style={styles.organizerArrow}>
+                    <Ionicons name="chevron-forward" size={20} color={colors.brand.textSecondary} />
+                  </View>
+                )}
+              </TouchableOpacity>
             </View>
           )}
           
@@ -937,7 +1147,7 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
               >
                 <Ionicons 
                   name="card" 
-                  size={20} 
+                  size={16} 
                   color={colors.brand.background} 
                   style={styles.purchaseButtonIcon}
                 />
@@ -952,6 +1162,7 @@ const EventDetailsScreen: React.FC<EventDetailsScreenProps> = () => {
 
       {/* Image Gallery Modal */}
       {renderImageGalleryModal()}
+
     </SafeAreaView>
   );
 };
@@ -1356,14 +1567,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.opacity.cardBorder,
   },
+  organizerAvatarContainer: {
+    marginRight: spacing.md,
+  },
   organizerAvatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: 'rgba(255, 215, 0, 0.1)',
+  },
+  organizerAvatarPlaceholder: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.brand.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: spacing.md,
+  },
+  organizerAvatarText: {
+    fontSize: typography.fontSizes.lg,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.brand.background,
   },
   organizerInfo: {
     flex: 1,
@@ -1374,16 +1597,29 @@ const styles = StyleSheet.create({
     color: colors.brand.textPrimary,
     marginBottom: spacing.xs,
   },
+  organizerEmail: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  organizerViewProfile: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.brand.primary,
+    fontStyle: 'italic',
+  },
+  organizerArrow: {
+    marginLeft: spacing.sm,
+  },
   organizerRole: {
     fontSize: typography.fontSizes.sm,
     color: colors.brand.textSecondary,
   },
   bottomSpacing: {
-    height: 180, // Space for fixed purchase button + navigation menu
+    height: 160, // Reduced space for smaller purchase button + navigation menu
   },
   purchaseContainer: {
     position: 'absolute',
-    bottom: 90, // Position above the navigation menu (typical tab bar height is ~80px)
+    bottom: 110, // Increased margin from navigation menu (safe distance)
     left: spacing.lg,
     right: spacing.lg,
     backgroundColor: colors.brand.background,
@@ -1400,39 +1636,39 @@ const styles = StyleSheet.create({
     borderColor: colors.opacity.cardBorder,
   },
   purchaseContent: {
-    padding: spacing.lg,
+    padding: spacing.md, // Reduced padding for smaller size
   },
   purchaseInfo: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm, // Reduced margin
   },
   purchaseTotal: {
-    fontSize: typography.fontSizes.xl,
+    fontSize: typography.fontSizes.lg, // Reduced font size
     fontWeight: typography.fontWeights.bold,
     color: colors.brand.primary,
     textAlign: 'center',
   },
   purchaseQuantity: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: typography.fontSizes.xs, // Smaller font size
     color: colors.brand.textSecondary,
     textAlign: 'center',
   },
   purchaseButton: {
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.md, // Smaller border radius
     overflow: 'hidden',
   },
   purchaseButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
+    paddingVertical: spacing.md, // Reduced from lg to md
+    paddingHorizontal: spacing.lg, // Reduced from xl to lg
+    gap: spacing.xs, // Reduced gap
   },
   purchaseButtonIcon: {
-    marginRight: spacing.sm,
+    marginRight: spacing.xs, // Reduced margin
   },
   purchaseButtonText: {
-    fontSize: typography.fontSizes.lg,
+    fontSize: typography.fontSizes.md, // Reduced font size
     fontWeight: typography.fontWeights.bold,
     color: colors.brand.background,
   },
@@ -1558,6 +1794,42 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.brand.textSecondary,
     textAlign: 'center',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  ratingsInfo: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.opacity.cardBorder,
+  },
+  ratingsInfoText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  rateEventButton: {
+    marginTop: spacing.md,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+  },
+  rateEventButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
+  },
+  rateEventButtonText: {
+    fontSize: typography.fontSizes.sm,
+    fontWeight: typography.fontWeights.semibold,
+    color: 'white',
   },
 });
 

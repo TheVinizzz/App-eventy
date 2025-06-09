@@ -235,11 +235,63 @@ export async function uploadStoryMedia(
   }
 }
 
+/**
+ * Generate a pre-signed URL for post image upload
+ */
+export async function generatePostUploadUrl(filename = 'post-image.jpg'): Promise<UploadResponse> {
+  try {
+    const { data } = await api.post('/social/posts/upload-image', { filename });
+    
+    return {
+      uploadUrl: data.uploadUrl,
+      objectName: data.objectName,
+      fileUrl: data.fileUrl
+    };
+  } catch (error) {
+    console.error('Erro ao gerar URL de upload para post:', error);
+    throw error;
+  }
+}
+
+/**
+ * Complete image upload process for posts
+ */
+export async function uploadPostImage(imageUri: string, filename?: string): Promise<string> {
+  try {
+    console.log('Starting post image upload process...', { imageUri, filename });
+    
+    // Generate filename if not provided
+    const finalFilename = filename || `post-${Date.now()}.jpg`;
+    console.log('Using filename:', finalFilename);
+    
+    // Generate pre-signed URL for posts
+    console.log('Generating pre-signed URL for post...');
+    const response = await generatePostUploadUrl(finalFilename);
+    console.log('Pre-signed URL generated:', response.uploadUrl);
+    
+    // Upload file to pre-signed URL
+    console.log('Uploading file to pre-signed URL...');
+    const uploadSuccess = await uploadToPresignedUrl(response.uploadUrl, imageUri, finalFilename);
+    
+    if (!uploadSuccess) {
+      throw new Error('Failed to upload post image');
+    }
+    
+    console.log('Post image upload successful! File URL:', response.fileUrl);
+    return response.fileUrl;
+  } catch (error) {
+    console.error('Error uploading post image:', error);
+    throw error;
+  }
+}
+
 export default {
   generateUploadUrl,
   generateVideoUploadUrl,
+  generatePostUploadUrl,
   uploadToPresignedUrl,
   uploadVideoToPresignedUrl,
   uploadEventImage,
   uploadStoryMedia,
+  uploadPostImage,
 }; 

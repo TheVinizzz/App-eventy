@@ -6,8 +6,6 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
-  ScrollView,
-  Dimensions,
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,14 +14,12 @@ import { Button } from '../components/ui';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import AuthModal from '../components/AuthModal';
 
-const { height: screenHeight } = Dimensions.get('window');
-
 const AuthRequiredScreen: React.FC = () => {
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const { height: windowHeight } = useWindowDimensions();
 
-  // Detect if it's a small screen (like iPhone SE, small Android phones)
+  // Detect screen sizes
   const isSmallScreen = windowHeight < 700;
   const isVerySmallScreen = windowHeight < 600;
 
@@ -37,15 +33,6 @@ const AuthRequiredScreen: React.FC = () => {
     setAuthModalVisible(true);
   };
 
-  // Dynamic spacing based on screen size
-  const dynamicSpacing = {
-    iconMargin: isVerySmallScreen ? spacing.lg : isSmallScreen ? spacing.xl : spacing.xxxl,
-    textMargin: isVerySmallScreen ? spacing.lg : isSmallScreen ? spacing.xl : spacing.xxxl,
-    buttonMargin: isVerySmallScreen ? spacing.md : isSmallScreen ? spacing.lg : spacing.xl,
-    iconSize: isVerySmallScreen ? 80 : isSmallScreen ? 100 : 120,
-    iconInnerSize: isVerySmallScreen ? 40 : isSmallScreen ? 50 : 60,
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.brand.background} />
@@ -54,131 +41,127 @@ const AuthRequiredScreen: React.FC = () => {
         colors={[colors.brand.background, colors.brand.darkGray]}
         style={styles.gradient}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { minHeight: windowHeight - 100 } // Ensure content takes full height minus safe areas
-          ]}
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-        >
-          <View style={styles.content}>
-            {/* Icon */}
-            <View style={[styles.iconContainer, { marginBottom: dynamicSpacing.iconMargin }]}>
-              <LinearGradient
-                colors={[colors.brand.primary, colors.brand.secondary]}
-                style={[
-                  styles.iconGradient,
-                  {
-                    width: dynamicSpacing.iconSize,
-                    height: dynamicSpacing.iconSize,
-                    borderRadius: dynamicSpacing.iconSize / 2,
-                  }
-                ]}
-              >
-                <Ionicons 
-                  name="lock-closed" 
-                  size={dynamicSpacing.iconInnerSize} 
-                  color={colors.brand.background} 
-                />
-              </LinearGradient>
-            </View>
+        <View style={styles.content}>
+          {/* Icon */}
+          <View style={styles.iconContainer}>
+            <LinearGradient
+              colors={[colors.brand.primary, colors.brand.secondary]}
+              style={[
+                styles.iconGradient,
+                isVerySmallScreen && styles.iconGradientSmall
+              ]}
+            >
+              <Ionicons 
+                name="lock-closed" 
+                size={isVerySmallScreen ? 32 : 40} 
+                color={colors.brand.background} 
+              />
+            </LinearGradient>
+          </View>
 
-            {/* Title and Description */}
-            <View style={[styles.textContainer, { marginBottom: dynamicSpacing.textMargin }]}>
-              <Text style={[
-                styles.title,
-                isVerySmallScreen && { fontSize: typography.fontSizes.xl }
-              ]}>
-                Acesso Restrito
-              </Text>
-              <Text style={[
-                styles.description,
-                isVerySmallScreen && { fontSize: typography.fontSizes.sm }
-              ]}>
-                Para acessar esta funcionalidade, você precisa criar uma conta ou fazer login.
-              </Text>
-              <Text style={[
-                styles.benefits,
-                isVerySmallScreen && { fontSize: typography.fontSizes.sm }
-              ]}>
-                Com uma conta você pode:
-              </Text>
-              
-              <View style={styles.benefitsList}>
+          {/* Title and Description */}
+          <View style={styles.textContainer}>
+            <Text style={[
+              styles.title,
+              isVerySmallScreen && styles.titleSmall
+            ]}>
+              Acesso Restrito
+            </Text>
+            <Text style={[
+              styles.description,
+              isVerySmallScreen && styles.descriptionSmall
+            ]}>
+              Para acessar esta funcionalidade, você precisa criar uma conta ou fazer login.
+            </Text>
+          </View>
+
+          {/* Benefits - Compact Grid */}
+          <View style={styles.benefitsContainer}>
+            <Text style={[
+              styles.benefitsTitle,
+              isVerySmallScreen && styles.benefitsTitleSmall
+            ]}>
+              Com uma conta você pode:
+            </Text>
+            
+            <View style={styles.benefitsGrid}>
+              <View style={styles.benefitRow}>
                 <View style={styles.benefitItem}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.brand.primary} />
+                  <Ionicons name="checkmark-circle" size={16} color={colors.brand.primary} />
                   <Text style={[
                     styles.benefitText,
-                    isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                    isVerySmallScreen && styles.benefitTextSmall
                   ]}>
                     Comprar e gerenciar ingressos
                   </Text>
                 </View>
                 <View style={styles.benefitItem}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.brand.primary} />
+                  <Ionicons name="checkmark-circle" size={16} color={colors.brand.primary} />
                   <Text style={[
                     styles.benefitText,
-                    isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                    isVerySmallScreen && styles.benefitTextSmall
                   ]}>
                     Participar da comunidade
                   </Text>
                 </View>
+              </View>
+              
+              <View style={styles.benefitRow}>
                 <View style={styles.benefitItem}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.brand.primary} />
+                  <Ionicons name="checkmark-circle" size={16} color={colors.brand.primary} />
                   <Text style={[
                     styles.benefitText,
-                    isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                    isVerySmallScreen && styles.benefitTextSmall
                   ]}>
                     Salvar eventos favoritos
                   </Text>
                 </View>
                 <View style={styles.benefitItem}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.brand.primary} />
+                  <Ionicons name="checkmark-circle" size={16} color={colors.brand.primary} />
                   <Text style={[
                     styles.benefitText,
-                    isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                    isVerySmallScreen && styles.benefitTextSmall
                   ]}>
-                    Receber recomendações personalizadas
+                    Receber recomendações
                   </Text>
                 </View>
               </View>
             </View>
-
-            {/* Action Buttons */}
-            <View style={[styles.buttonContainer, { marginBottom: dynamicSpacing.buttonMargin }]}>
-              <Button
-                title="Criar Conta"
-                onPress={handleRegister}
-                style={StyleSheet.flatten([
-                  styles.primaryButton,
-                  isVerySmallScreen && styles.smallScreenButton,
-                ])}
-              />
-              
-              <Button
-                title="Já tenho conta"
-                onPress={handleLogin}
-                variant="outline"
-                style={StyleSheet.flatten([
-                  styles.secondaryButton,
-                  isVerySmallScreen && styles.smallScreenButton,
-                ])}
-              />
-            </View>
-
-            {/* Continue as Guest */}
-            <TouchableOpacity style={styles.guestButton}>
-              <Text style={[
-                styles.guestButtonText,
-                isVerySmallScreen && { fontSize: typography.fontSizes.xs }
-              ]}>
-                Continuar explorando eventos
-              </Text>
-              <Ionicons name="arrow-forward" size={16} color={colors.brand.primary} />
-            </TouchableOpacity>
           </View>
-        </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Criar Conta"
+              onPress={handleRegister}
+              style={StyleSheet.flatten([
+                styles.primaryButton,
+                isVerySmallScreen && styles.buttonSmall
+              ])}
+            />
+            
+            <Button
+              title="Já tenho conta"
+              onPress={handleLogin}
+              variant="outline"
+              style={StyleSheet.flatten([
+                styles.secondaryButton,
+                isVerySmallScreen && styles.buttonSmall
+              ])}
+            />
+          </View>
+
+          {/* Continue as Guest */}
+          <TouchableOpacity style={styles.guestButton}>
+            <Text style={[
+              styles.guestButtonText,
+              isVerySmallScreen && styles.guestButtonTextSmall
+            ]}>
+              Continuar explorando eventos
+            </Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.brand.primary} />
+          </TouchableOpacity>
+        </View>
       </LinearGradient>
 
       {/* Auth Modal */}
@@ -199,20 +182,20 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
   content: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'space-evenly',
     alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   iconContainer: {
     alignItems: 'center',
   },
   iconGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.brand.primary,
@@ -224,6 +207,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  iconGradientSmall: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+  },
   textContainer: {
     alignItems: 'center',
     width: '100%',
@@ -233,55 +221,81 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.bold,
     color: colors.brand.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  titleSmall: {
+    fontSize: typography.fontSizes.xl,
+    marginBottom: spacing.xs,
   },
   description: {
     fontSize: typography.fontSizes.md,
     color: colors.brand.textSecondary,
     textAlign: 'center',
-    lineHeight: typography.fontSizes.md * 1.4,
-    marginBottom: spacing.xl,
+    lineHeight: typography.fontSizes.md * 1.3,
     paddingHorizontal: spacing.sm,
   },
-  benefits: {
+  descriptionSmall: {
+    fontSize: typography.fontSizes.sm,
+    lineHeight: typography.fontSizes.sm * 1.2,
+  },
+  benefitsContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  benefitsTitle: {
     fontSize: typography.fontSizes.md,
     color: colors.brand.textPrimary,
     fontWeight: typography.fontWeights.semibold,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
-  benefitsList: {
-    alignSelf: 'stretch',
-    paddingHorizontal: spacing.md,
+  benefitsTitleSmall: {
+    fontSize: typography.fontSizes.sm,
+    marginBottom: spacing.sm,
+  },
+  benefitsGrid: {
+    width: '100%',
+  },
+  benefitRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
   benefitItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
-    paddingHorizontal: spacing.sm,
+    flex: 0.48,
+    paddingHorizontal: spacing.xs,
   },
   benefitText: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: typography.fontSizes.xs,
     color: colors.brand.textSecondary,
-    marginLeft: spacing.sm,
+    marginLeft: spacing.xs,
     flex: 1,
-    lineHeight: typography.fontSizes.sm * 1.3,
+    lineHeight: typography.fontSizes.xs * 1.3,
+  },
+  benefitTextSmall: {
+    fontSize: 10,
+    lineHeight: 12,
   },
   buttonContainer: {
-    alignSelf: 'stretch',
-    paddingHorizontal: spacing.md,
+    width: '100%',
+    paddingHorizontal: spacing.sm,
   },
   primaryButton: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   secondaryButton: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
+  },
+  buttonSmall: {
+    paddingVertical: spacing.sm,
   },
   guestButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
   },
   guestButtonText: {
     fontSize: typography.fontSizes.sm,
@@ -289,8 +303,8 @@ const styles = StyleSheet.create({
     fontWeight: typography.fontWeights.medium,
     marginRight: spacing.xs,
   },
-  smallScreenButton: {
-    paddingVertical: spacing.sm,
+  guestButtonTextSmall: {
+    fontSize: typography.fontSizes.xs,
   },
 });
 

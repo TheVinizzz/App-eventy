@@ -21,7 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { colors, spacing, typography, borderRadius } from '../../theme';
-import { socialService, Story, CreateStoryData } from '../../services/socialService';
+import socialService, { Story, CreateStoryData } from '../../services/socialService';
+import { eventCommunityService } from '../../services/eventCommunityService';
 import { uploadStoryMedia } from '../../services/imageService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -34,6 +35,11 @@ interface CreateStoryModalProps {
     id: string;
     name: string;
     profileImage?: string;
+  };
+  isEventCommunity?: boolean;
+  eventInfo?: {
+    title: string;
+    id: string;
   };
 }
 
@@ -65,6 +71,8 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   onClose,
   onStoryCreated,
   user,
+  isEventCommunity = false,
+  eventInfo,
 }) => {
   const [step, setStep] = useState<'select' | 'edit' | 'preview'>('select');
   const [selectedMedia, setSelectedMedia] = useState<{
@@ -274,10 +282,32 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         backgroundColor: textOverlays.length > 0 ? textOverlays[0].backgroundColor : undefined,
       };
 
-      // Call real API
-      const newStory = await socialService.createStory(storyData);
+      // Call appropriate API based on context
+      let newStory;
+      if (isEventCommunity && eventInfo?.id) {
+        console.log('Creating story in event community:', eventInfo.title);
+        const communityStory = await eventCommunityService.createStory(
+          eventInfo.id,
+          uploadedMediaUrl,
+          selectedMedia.type === 'video' ? 'VIDEO' : 'IMAGE',
+          textOverlays.length > 0 ? textOverlays[0].text : undefined
+        );
+        
+        // Normalizar para formato Story para compatibilidade
+        newStory = {
+          ...communityStory,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24h
+          viewed: false,
+          _count: {
+            views: communityStory.viewsCount || 0
+          }
+        };
+      } else {
+        console.log('Creating story in general community');
+        newStory = await socialService.createStory(storyData);
+      }
       
-      onStoryCreated(newStory);
+      onStoryCreated(newStory as Story);
       animateClose();
     } catch (error) {
       console.error('Error creating story:', error);
@@ -325,7 +355,15 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
               <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                 <Ionicons name="close" size={28} color="white" />
               </TouchableOpacity>
-              <Text style={styles.headerTitle}>Criar Story</Text>
+              <View style={styles.headerCenter}>
+                <Text style={styles.headerTitle}>Criar Story</Text>
+                {isEventCommunity && eventInfo && (
+                  <View style={styles.eventBadge}>
+                    <Ionicons name="calendar" size={12} color="#FFD700" />
+                    <Text style={styles.eventBadgeText}>{eventInfo.title}</Text>
+                  </View>
+                )}
+              </View>
               <View style={styles.placeholder} />
             </View>
 
@@ -672,6 +710,27 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.lg,
     fontWeight: typography.fontWeights.bold,
     color: colors.brand.textPrimary,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  eventBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 215, 0, 0.3)',
+  },
+  eventBadgeText: {
+    fontSize: typography.fontSizes.xs,
+    color: '#FFD700',
+    marginLeft: spacing.xs,
+    fontWeight: typography.fontWeights.medium,
   },
   placeholder: {
     width: 40,

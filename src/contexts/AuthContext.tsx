@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants';
 import authService, { User } from '../services/authService';
+import { autoRatingNotificationService } from '../services/AutoRatingNotificationService';
+import { eventTicketNotificationService } from '../services/EventTicketNotificationService';
 
 interface AuthContextType {
   user: User | null;
@@ -12,7 +14,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  updateUser: (userData: Partial<User>) => void;
+  updateUser: (userData: Partial<User>) => Promise<void>;
+  updateProfileImage: (imageUri: string) => Promise<void>;
   refreshUserProfile: () => Promise<User | null>;
 }
 
@@ -73,6 +76,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       setUser(authState.user);
       setAccessToken(authState.accessToken);
+      
+      // Verificar tickets do usuário para agendar notificações
+      if (authState.user?.id) {
+        try {
+          // Agendar notificações de avaliação (24h após eventos)
+          await autoRatingNotificationService.scheduleNotificationsForUserTickets(authState.user.id);
+          console.log('✅ Notificações de avaliação agendadas');
+          
+          // Agendar notificações de ingressos (1h antes de eventos)
+          await eventTicketNotificationService.scheduleNotificationsForUserTickets(authState.user.id);
+          console.log('✅ Notificações de ingressos agendadas');
+        } catch (error) {
+          console.log('⚠️ Erro ao agendar notificações:', error);
+        }
+      }
     } catch (error: any) {
       await clearStoredAuth();
       throw error;
@@ -110,16 +128,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const updateUser = async (userData: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...userData };
+  const updateUser = async (userData: Partial<User>): Promise<void> => {
+    if (!user) {
+      throw new Error('Usuário não está logado');
+    }
+
+    try {
+      // Otimistic update - atualizar UI imediatamente
+      const optimisticUser = { ...user, ...userData };
+      setUser(optimisticUser);
+      
+      // Enviar para o backend
+      const updatedUser = await authService.updateUser(userData);
+      
+      // Atualizar com dados reais do backend
       setUser(updatedUser);
       
-      try {
-        await authService.updateUser(updatedUser);
-      } catch (error) {
-        console.error('Error updating user data:', error);
-      }
+      console.log('✅ AuthContext: User updated successfully');
+    } catch (error) {
+      console.error('❌ AuthContext: Error updating user:', error);
+      
+      // Reverter para dados originais se houve erro
+      setUser(user);
+      throw error;
     }
   };
 
@@ -145,6 +176,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const updateProfileImage = async (imageUri: string): Promise<void> => {
+    if (!user) {
+      throw new Error('Usuário não está logado');
+    }
+
+    try {
+      console.log('🚀 AuthContext: Starting profile image update...', { imageUri });
+      
+      // Import the profile image service
+      const { uploadAndUpdateProfileImage } = await import('../services/profileImageService');
+      
+      // Upload image and update backend
+      const imageUrl = await uploadAndUpdateProfileImage(imageUri);
+      
+      // Update local state
+      const updatedUser = { ...user, profileImage: imageUrl };
+      setUser(updatedUser);
+      
+      // Update local storage
+      await authService.updateUserLocal(updatedUser);
+      
+      console.log('✅ AuthContext: Profile image updated successfully');
+    } catch (error) {
+      console.error('❌ AuthContext: Error updating profile image:', error);
+      throw error;
+    }
+  };
+
   const value: AuthContextType = {
     user,
     accessToken,
@@ -155,6 +214,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     register,
     updateUser,
+    updateProfileImage,
     refreshUserProfile,
   };
 

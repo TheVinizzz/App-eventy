@@ -12,6 +12,7 @@ import { useSafeArea } from '../hooks/useSafeArea';
 import HomeScreen from '../screens/HomeScreen';
 import SearchScreen from '../screens/SearchScreen';
 import TicketsScreen from '../screens/TicketsScreen';
+import EventTicketsScreen from '../screens/EventTicketsScreen';
 import CommunityScreen from '../screens/CommunityScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import EventDetailsScreen from '../screens/EventDetailsScreen';
@@ -47,6 +48,10 @@ const TicketsStack = () => {
       <Stack.Screen 
         name="TicketsMain" 
         component={isAuthenticated ? TicketsScreen : AuthRequiredScreen} 
+      />
+      <Stack.Screen 
+        name="EventTickets" 
+        component={EventTicketsScreen} 
       />
     </Stack.Navigator>
   );

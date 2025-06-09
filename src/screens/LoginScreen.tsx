@@ -8,9 +8,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Alert,
-  Dimensions,
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,18 +29,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
   const { login } = useAuth();
   const { height: windowHeight } = useWindowDimensions();
 
-  // Detect if it's a small screen
+  // Detect screen sizes
   const isSmallScreen = windowHeight < 700;
   const isVerySmallScreen = windowHeight < 600;
-
-  // Dynamic spacing based on screen size
-  const dynamicSpacing = {
-    logoMargin: isVerySmallScreen ? spacing.lg : isSmallScreen ? spacing.xl : spacing.xxxl,
-    formMargin: isVerySmallScreen ? spacing.md : isSmallScreen ? spacing.lg : spacing.xl,
-    socialMargin: isVerySmallScreen ? spacing.md : isSmallScreen ? spacing.lg : spacing.xl,
-    logoSize: isVerySmallScreen ? 60 : isSmallScreen ? 70 : 80,
-    logoIconSize: isVerySmallScreen ? 30 : isSmallScreen ? 35 : 40,
-  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -73,58 +62,46 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.keyboardView}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-          <ScrollView
-            contentContainerStyle={[
-              styles.scrollContent,
-              { paddingBottom: isVerySmallScreen ? spacing.lg : spacing.xxxl }
-            ]}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-          >
+          <View style={styles.content}>
             {/* Header */}
             <View style={styles.header}>
               <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                <Ionicons name="close" size={24} color={colors.brand.textPrimary} />
+                <Ionicons name="close" size={20} color={colors.brand.textPrimary} />
               </TouchableOpacity>
             </View>
 
             {/* Logo and Title */}
-            <View style={[styles.logoContainer, { marginBottom: dynamicSpacing.logoMargin }]}>
+            <View style={styles.logoContainer}>
               <LinearGradient
                 colors={[colors.brand.primary, colors.brand.secondary]}
                 style={[
                   styles.logoGradient,
-                  {
-                    width: dynamicSpacing.logoSize,
-                    height: dynamicSpacing.logoSize,
-                    borderRadius: dynamicSpacing.logoSize / 2,
-                  }
+                  isVerySmallScreen && styles.logoGradientSmall
                 ]}
               >
                 <Ionicons 
                   name="ticket" 
-                  size={dynamicSpacing.logoIconSize} 
+                  size={isVerySmallScreen ? 24 : 30} 
                   color={colors.brand.background} 
                 />
               </LinearGradient>
               <Text style={[
                 styles.title,
-                isVerySmallScreen && { fontSize: typography.fontSizes.xl }
+                isVerySmallScreen && styles.titleSmall
               ]}>
                 Bem-vindo de volta!
               </Text>
               <Text style={[
                 styles.subtitle,
-                isVerySmallScreen && { fontSize: typography.fontSizes.sm }
+                isVerySmallScreen && styles.subtitleSmall
               ]}>
                 Entre na sua conta para acessar eventos exclusivos
               </Text>
             </View>
 
             {/* Form */}
-            <View style={[styles.form, { marginBottom: dynamicSpacing.formMargin }]}>
+            <View style={styles.form}>
               <Input
                 placeholder="Email"
                 value={email}
@@ -147,7 +124,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
               <TouchableOpacity style={styles.forgotPassword}>
                 <Text style={[
                   styles.forgotPasswordText,
-                  isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                  isVerySmallScreen && styles.forgotPasswordTextSmall
                 ]}>
                   Esqueceu sua senha?
                 </Text>
@@ -159,18 +136,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
                 loading={isLoading}
                 style={StyleSheet.flatten([
                   styles.loginButton,
-                  isVerySmallScreen && styles.smallScreenButton,
+                  isVerySmallScreen && styles.buttonSmall
                 ])}
               />
             </View>
 
-            {/* Social Login */}
-            <View style={[styles.socialContainer, { marginBottom: dynamicSpacing.socialMargin }]}>
+            {/* Social Login - Compact */}
+            <View style={styles.socialContainer}>
               <View style={styles.divider}>
                 <View style={styles.dividerLine} />
                 <Text style={[
                   styles.dividerText,
-                  isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                  isVerySmallScreen && styles.dividerTextSmall
                 ]}>
                   ou continue com
                 </Text>
@@ -180,12 +157,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
               <View style={styles.socialButtons}>
                 <TouchableOpacity style={[
                   styles.socialButton,
-                  isVerySmallScreen && { paddingVertical: spacing.sm }
+                  isVerySmallScreen && styles.socialButtonSmall
                 ]}>
-                  <Ionicons name="logo-google" size={20} color={colors.brand.textPrimary} />
+                  <Ionicons name="logo-google" size={16} color={colors.brand.textPrimary} />
                   <Text style={[
                     styles.socialButtonText,
-                    isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                    isVerySmallScreen && styles.socialButtonTextSmall
                   ]}>
                     Google
                   </Text>
@@ -193,12 +170,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
 
                 <TouchableOpacity style={[
                   styles.socialButton,
-                  isVerySmallScreen && { paddingVertical: spacing.sm }
+                  isVerySmallScreen && styles.socialButtonSmall
                 ]}>
-                  <Ionicons name="logo-apple" size={20} color={colors.brand.textPrimary} />
+                  <Ionicons name="logo-apple" size={16} color={colors.brand.textPrimary} />
                   <Text style={[
                     styles.socialButtonText,
-                    isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                    isVerySmallScreen && styles.socialButtonTextSmall
                   ]}>
                     Apple
                   </Text>
@@ -210,20 +187,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onSwitchToRegister, onClose }
             <View style={styles.registerContainer}>
               <Text style={[
                 styles.registerText,
-                isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                isVerySmallScreen && styles.registerTextSmall
               ]}>
                 Não tem uma conta?{' '}
               </Text>
               <TouchableOpacity onPress={onSwitchToRegister}>
                 <Text style={[
                   styles.registerLink,
-                  isVerySmallScreen && { fontSize: typography.fontSizes.xs }
+                  isVerySmallScreen && styles.registerLinkSmall
                 ]}>
                   Criar conta
                 </Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </View>
         </KeyboardAvoidingView>
       </LinearGradient>
     </SafeAreaView>
@@ -241,20 +218,21 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
+  content: {
+    flex: 1,
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    justifyContent: 'center',
-    minHeight: '100%',
+    paddingVertical: spacing.sm,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    paddingTop: spacing.sm,
-    marginBottom: spacing.lg,
+    width: '100%',
+    alignSelf: 'flex-start',
   },
   closeButton: {
-    padding: spacing.sm,
+    padding: spacing.xs,
     borderRadius: borderRadius.full,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -262,9 +240,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoGradient: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     shadowColor: colors.brand.primary,
     shadowOffset: {
       width: 0,
@@ -274,28 +255,41 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+  logoGradientSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginBottom: spacing.sm,
+  },
   title: {
-    fontSize: typography.fontSizes.xxl,
+    fontSize: typography.fontSizes.xl,
     fontWeight: typography.fontWeights.bold,
     color: colors.brand.textPrimary,
     textAlign: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  titleSmall: {
+    fontSize: typography.fontSizes.lg,
   },
   subtitle: {
-    fontSize: typography.fontSizes.md,
+    fontSize: typography.fontSizes.sm,
     color: colors.brand.textSecondary,
     textAlign: 'center',
-    lineHeight: typography.fontSizes.md * 1.4,
+    lineHeight: typography.fontSizes.sm * 1.3,
+  },
+  subtitleSmall: {
+    fontSize: typography.fontSizes.xs,
+    lineHeight: typography.fontSizes.xs * 1.2,
   },
   form: {
     width: '100%',
   },
   input: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   forgotPassword: {
     alignSelf: 'flex-end',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
     paddingVertical: spacing.xs,
   },
   forgotPasswordText: {
@@ -303,8 +297,14 @@ const styles = StyleSheet.create({
     color: colors.brand.primary,
     fontWeight: typography.fontWeights.medium,
   },
+  forgotPasswordTextSmall: {
+    fontSize: typography.fontSizes.xs,
+  },
   loginButton: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
+  },
+  buttonSmall: {
+    paddingVertical: spacing.sm,
   },
   socialContainer: {
     width: '100%',
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   dividerLine: {
     flex: 1,
@@ -320,13 +320,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.opacity.cardBorder,
   },
   dividerText: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: typography.fontSizes.xs,
     color: colors.brand.textSecondary,
-    marginHorizontal: spacing.md,
+    marginHorizontal: spacing.sm,
+  },
+  dividerTextSmall: {
+    fontSize: 10,
   },
   socialButtons: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   socialButton: {
     flex: 1,
@@ -334,35 +337,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.brand.darkGray,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.opacity.cardBorder,
   },
+  socialButtonSmall: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
   socialButtonText: {
-    fontSize: typography.fontSizes.sm,
+    fontSize: typography.fontSizes.xs,
     color: colors.brand.textPrimary,
     fontWeight: typography.fontWeights.medium,
-    marginLeft: spacing.sm,
+    marginLeft: spacing.xs,
+  },
+  socialButtonTextSmall: {
+    fontSize: 10,
   },
   registerContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: spacing.xl,
   },
   registerText: {
     fontSize: typography.fontSizes.sm,
     color: colors.brand.textSecondary,
+  },
+  registerTextSmall: {
+    fontSize: typography.fontSizes.xs,
   },
   registerLink: {
     fontSize: typography.fontSizes.sm,
     color: colors.brand.primary,
     fontWeight: typography.fontWeights.semibold,
   },
-  smallScreenButton: {
-    marginBottom: spacing.lg,
+  registerLinkSmall: {
+    fontSize: typography.fontSizes.xs,
   },
 });
 

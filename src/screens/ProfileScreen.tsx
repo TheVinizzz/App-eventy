@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,25 +9,118 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Button } from '../components/ui';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../navigation/types';
+import { getUserCompleteStats, UserStats } from '../services/userStatsService';
+import { getUserActivities, UserActivity, getActivityIcon, getActivityColor } from '../services/userActivityService';
+import { ActivitySpinner } from '../components/ui/ActivitySpinner';
 
 const ProfileScreen: React.FC = () => {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, updateProfileImage } = useAuth();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  
+  const [userStats, setUserStats] = useState<UserStats>({
+    eventsAttended: 0,
+    eventsCreated: 0,
+    followers: 0,
+    following: 0,
+    totalTickets: 0,
+    activeTickets: 0,
+    usedTickets: 0,
+    totalSpent: 0,
+    upcomingEvents: 0,
+    pastEvents: 0,
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
+  const [userActivities, setUserActivities] = useState<UserActivity[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  
+  // Estados para controlar primeira carga
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
-  const userStats = {
-    eventsAttended: 24,
-    eventsCreated: 3,
-    followers: 156,
-    following: 89,
+  // Carregar estatísticas reais do usuário
+  useEffect(() => {
+    loadUserStats();
+    loadUserActivities();
+  }, []);
+
+  // Atualizar estatísticas quando a tela receber foco
+  useFocusEffect(
+    React.useCallback(() => {
+      // Na primeira vez mostra loading, depois carrega disfarçadamente
+      const shouldShowLoading = isInitialLoad;
+      loadUserStats(!hasLoadedOnce);
+      
+      // Carrega atividades disfarçadamente apenas se não for primeira vez
+      if (hasLoadedOnce) {
+        loadUserActivities(false);
+      }
+    }, [hasLoadedOnce, isInitialLoad])
+  );
+
+  const loadUserStats = async (showLoading = true) => {
+    try {
+      // Só mostra loading na primeira vez ou quando explicitamente solicitado
+      if (showLoading && isInitialLoad) {
+        setIsLoadingStats(true);
+      }
+      
+      console.log('📊 ProfileScreen: Loading user stats...');
+      
+      const stats = await getUserCompleteStats();
+      setUserStats(stats);
+      
+      // Marca que já carregou pelo menos uma vez
+      if (!hasLoadedOnce) {
+        setHasLoadedOnce(true);
+        setIsInitialLoad(false);
+      }
+      
+      console.log('✅ ProfileScreen: User stats loaded successfully:', stats);
+    } catch (error) {
+      console.error('❌ ProfileScreen: Error loading user stats:', error);
+      // Manter dados padrão em caso de erro
+    } finally {
+      if (showLoading && isInitialLoad) {
+        setIsLoadingStats(false);
+      }
+    }
+  };
+
+  const loadUserActivities = async (showLoading = true) => {
+    try {
+      // Só mostra loading na primeira vez ou quando explicitamente solicitado
+      if (showLoading && isInitialLoad) {
+        setIsLoadingActivities(true);
+      }
+      
+      console.log('🎯 ProfileScreen: Loading user activities...');
+      
+      const activities = await getUserActivities(5); // Limitar a 5 atividades na tela de perfil
+      setUserActivities(activities);
+      
+      console.log('✅ ProfileScreen: User activities loaded successfully:', activities.length);
+    } catch (error) {
+      console.error('❌ ProfileScreen: Error loading user activities:', error);
+      // Manter lista vazia em caso de erro
+    } finally {
+      if (showLoading && isInitialLoad) {
+        setIsLoadingActivities(false);
+      }
+    }
   };
 
   const menuItems = [
@@ -77,7 +170,7 @@ const ProfileScreen: React.FC = () => {
         navigation.navigate('MyEvents');
         break;
       case 'Favoritos':
-        // TODO: Navigate to Favorites
+        navigation.navigate('Favorites');
         break;
       case 'Configurações':
         // TODO: Navigate to Settings
@@ -93,6 +186,55 @@ const ProfileScreen: React.FC = () => {
         break;
       default:
         break;
+    }
+  };
+
+  const handleImagePicker = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (!permissionResult.granted) {
+        Alert.alert(
+          'Permissão Necessária',
+          'Precisamos de permissão para acessar suas fotos.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Configurações', onPress: () => ImagePicker.requestMediaLibraryPermissionsAsync() }
+          ]
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setIsImageLoading(true);
+        console.log('📸 ProfileScreen: Image selected, starting upload...');
+        
+        try {
+          await updateProfileImage(result.assets[0].uri);
+          
+          console.log('✅ ProfileScreen: Profile image updated successfully');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          
+        } catch (error: any) {
+          console.error('❌ ProfileScreen: Error uploading image:', error);
+          Alert.alert(
+            'Erro no Upload', 
+            `Não foi possível atualizar a foto:\n${error.message || 'Erro desconhecido'}`
+          );
+        } finally {
+          setIsImageLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error('❌ ProfileScreen: Error picking image:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
     }
   };
 
@@ -117,11 +259,28 @@ const ProfileScreen: React.FC = () => {
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={false} // Nunca mostra loading no pull-to-refresh
+              onRefresh={async () => {
+                // Força refresh com loading disfarçado após primeira carga
+                await Promise.all([
+                  loadUserStats(false), 
+                  loadUserActivities(false)
+                ]);
+              }}
+              colors={[colors.brand.primary]}
+              tintColor={colors.brand.primary}
+            />
+          }
         >
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Perfil</Text>
-            <TouchableOpacity style={styles.editButton}>
+            <TouchableOpacity 
+              style={styles.editButton}
+              onPress={() => navigation.navigate('EditProfile')}
+            >
               <Ionicons 
                 name="create-outline" 
                 size={24} 
@@ -146,8 +305,16 @@ const ProfileScreen: React.FC = () => {
                     </Text>
                   )}
                 </View>
-                <TouchableOpacity style={styles.avatarEditButton}>
-                  <Ionicons name="camera" size={16} color={colors.brand.primary} />
+                <TouchableOpacity 
+                  style={styles.avatarEditButton}
+                  onPress={handleImagePicker}
+                  disabled={isImageLoading}
+                >
+                  {isImageLoading ? (
+                    <ActivityIndicator size="small" color={colors.brand.primary} />
+                  ) : (
+                    <Ionicons name="camera" size={16} color={colors.brand.primary} />
+                  )}
                 </TouchableOpacity>
               </View>
               
@@ -170,18 +337,39 @@ const ProfileScreen: React.FC = () => {
                 {(user?.instagram || user?.tiktok || user?.facebook) && (
                   <View style={styles.socialLinks}>
                     {user.instagram && (
-                      <TouchableOpacity style={styles.socialLink}>
+                      <TouchableOpacity 
+                        style={styles.socialLink}
+                        onPress={() => {
+                          // Aqui você implementaria a abertura do link
+                          console.log('Opening Instagram:', user.instagram);
+                        }}
+                      >
                         <Ionicons name="logo-instagram" size={20} color={colors.brand.primary} />
+                        <Text style={styles.socialLinkText}>@{user.instagram}</Text>
                       </TouchableOpacity>
                     )}
                     {user.tiktok && (
-                      <TouchableOpacity style={styles.socialLink}>
+                      <TouchableOpacity 
+                        style={styles.socialLink}
+                        onPress={() => {
+                          // Aqui você implementaria a abertura do link
+                          console.log('Opening TikTok:', user.tiktok);
+                        }}
+                      >
                         <Ionicons name="logo-tiktok" size={20} color={colors.brand.primary} />
+                        <Text style={styles.socialLinkText}>@{user.tiktok}</Text>
                       </TouchableOpacity>
                     )}
                     {user.facebook && (
-                      <TouchableOpacity style={styles.socialLink}>
+                      <TouchableOpacity 
+                        style={styles.socialLink}
+                        onPress={() => {
+                          // Aqui você implementaria a abertura do link
+                          console.log('Opening Facebook:', user.facebook);
+                        }}
+                      >
                         <Ionicons name="logo-facebook" size={20} color={colors.brand.primary} />
+                        <Text style={styles.socialLinkText}>{user.facebook}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -191,22 +379,31 @@ const ProfileScreen: React.FC = () => {
 
             {/* Stats */}
             <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{userStats.eventsAttended}</Text>
-                <Text style={styles.statLabel}>Eventos</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{userStats.eventsCreated}</Text>
-                <Text style={styles.statLabel}>Criados</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{userStats.followers}</Text>
-                <Text style={styles.statLabel}>Seguidores</Text>
-              </View>
-              <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{userStats.following}</Text>
-                <Text style={styles.statLabel}>Seguindo</Text>
-              </View>
+              {(isLoadingStats && isInitialLoad) ? (
+                <View style={styles.statsLoading}>
+                  <ActivityIndicator size="small" color={colors.brand.primary} />
+                  <Text style={styles.statsLoadingText}>Carregando estatísticas...</Text>
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity style={styles.statItem}>
+                    <Text style={styles.statNumber}>{userStats.eventsAttended}</Text>
+                    <Text style={styles.statLabel}>Eventos</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.statItem}>
+                    <Text style={styles.statNumber}>{userStats.eventsCreated}</Text>
+                    <Text style={styles.statLabel}>Criados</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.statItem}>
+                    <Text style={styles.statNumber}>{userStats.followers}</Text>
+                    <Text style={styles.statLabel}>Seguidores</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.statItem}>
+                    <Text style={styles.statNumber}>{userStats.following}</Text>
+                    <Text style={styles.statLabel}>Seguindo</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </Card>
 
@@ -263,30 +460,78 @@ const ProfileScreen: React.FC = () => {
 
           {/* Recent Activity */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Atividade Recente</Text>
-            <Card style={styles.activityCard}>
-              {[
-                { action: 'Participou do evento', event: 'Festival de Música 2024', time: '2 dias atrás' },
-                { action: 'Curtiu o post de', event: 'Maria Santos', time: '3 dias atrás' },
-                { action: 'Criou o evento', event: 'Meetup de Tecnologia', time: '1 semana atrás' },
-              ].map((activity, index) => (
-                <View key={index} style={styles.activityItem}>
-                  <View style={styles.activityIcon}>
-                    <Ionicons 
-                      name="checkmark-circle" 
-                      size={16} 
-                      color={colors.brand.primary} 
-                    />
-                  </View>
-                  <View style={styles.activityText}>
-                    <Text style={styles.activityDescription}>
-                      {activity.action} <Text style={styles.activityEvent}>{activity.event}</Text>
-                    </Text>
-                    <Text style={styles.activityTime}>{activity.time}</Text>
-                  </View>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Atividade Recente</Text>
+            </View>
+            
+            {(isLoadingActivities && isInitialLoad) ? (
+              <Card style={styles.activityCard}>
+                <ActivitySpinner 
+                  size="medium" 
+                  message="Carregando suas atividades..."
+                  showMessage={true}
+                  color={colors.brand.primary}
+                />
+              </Card>
+            ) : (
+              <Card style={styles.activityCard}>
+                {userActivities.length > 0 ? (
+                userActivities.map((activity, index) => (
+                  <TouchableOpacity 
+                    key={activity.id} 
+                    style={[
+                      styles.activityItem,
+                      index === userActivities.length - 1 && styles.activityItemLast
+                    ]}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      // TODO: Navegar para detalhes da atividade se aplicável
+                      console.log('Activity pressed:', activity);
+                    }}
+                  >
+                    <View style={[
+                      styles.activityIconContainer,
+                      { backgroundColor: getActivityColor(activity.type) + '20' }
+                    ]}>
+                      <Ionicons 
+                        name={getActivityIcon(activity.type) as any}
+                        size={16} 
+                        color={getActivityColor(activity.type)} 
+                      />
+                    </View>
+                    <View style={styles.activityContent}>
+                      <Text style={styles.activityDescription}>
+                        {activity.action}{' '}
+                        {activity.target && (
+                          <Text style={styles.activityTarget}>{activity.target.title}</Text>
+                        )}
+                      </Text>
+                      {activity.metadata?.amount && (
+                        <Text style={styles.activityAmount}>
+                          R$ {activity.metadata.amount.toFixed(2)}
+                        </Text>
+                      )}
+                      <Text style={styles.activityTime}>{activity.timeAgo}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.emptyActivity}>
+                  <Ionicons 
+                    name="time-outline" 
+                    size={32} 
+                    color={colors.brand.textTertiary} 
+                  />
+                  <Text style={styles.emptyActivityText}>
+                    Nenhuma atividade recente
+                  </Text>
+                  <Text style={styles.emptyActivitySubtext}>
+                    Suas atividades aparecerão aqui
+                  </Text>
                 </View>
-              ))}
-            </Card>
+              )}
+              </Card>
+            )}
           </View>
 
           {/* Logout */}
@@ -415,6 +660,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.opacity.cardBorder,
   },
+  statsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.lg,
+  },
+  statsLoadingText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    marginLeft: spacing.sm,
+  },
   statItem: {
     alignItems: 'center',
   },
@@ -483,17 +739,40 @@ const styles = StyleSheet.create({
     color: colors.brand.textSecondary,
     marginTop: spacing.xs,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
   activityCard: {
     marginHorizontal: spacing.lg,
   },
   activityItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.opacity.cardBorder,
+  },
+  activityItemLast: {
+    borderBottomWidth: 0,
+  },
+  activityIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.md,
   },
   activityIcon: {
     marginRight: spacing.sm,
     marginTop: spacing.xs,
+  },
+  activityContent: {
+    flex: 1,
   },
   activityText: {
     flex: 1,
@@ -501,15 +780,42 @@ const styles = StyleSheet.create({
   activityDescription: {
     fontSize: typography.fontSizes.sm,
     color: colors.brand.textSecondary,
+    lineHeight: 20,
+  },
+  activityTarget: {
+    color: colors.brand.primary,
+    fontWeight: typography.fontWeights.medium,
   },
   activityEvent: {
     color: colors.brand.primary,
     fontWeight: typography.fontWeights.medium,
   },
+  activityAmount: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.primary,
+    fontWeight: typography.fontWeights.semibold,
+    marginTop: spacing.xs,
+  },
   activityTime: {
     fontSize: typography.fontSizes.xs,
     color: colors.brand.textTertiary,
     marginTop: spacing.xs,
+  },
+  emptyActivity: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  emptyActivityText: {
+    fontSize: typography.fontSizes.md,
+    color: colors.brand.textSecondary,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  emptyActivitySubtext: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textTertiary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
   logoutButton: {
     marginHorizontal: spacing.lg,
@@ -529,7 +835,15 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   socialLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: spacing.xs,
+    marginRight: spacing.sm,
+  },
+  socialLinkText: {
+    fontSize: typography.fontSizes.sm,
+    color: colors.brand.textSecondary,
+    marginLeft: spacing.xs,
   },
 });
 

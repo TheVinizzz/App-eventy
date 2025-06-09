@@ -40,6 +40,7 @@ export interface CreateEventData {
   type: string;
   imageUrl: string;
   mediaUrls: string[];
+  evenLoveEnabled?: boolean;
 }
 
 export interface CreateTicketBatchData {

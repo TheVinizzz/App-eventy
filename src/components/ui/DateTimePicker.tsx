@@ -283,32 +283,38 @@ const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({
       {/* Date and Time Display */}
       <View style={styles.inputRow}>
         {/* Date Picker */}
-        <TouchableOpacity
-          style={[styles.dateTimeButton, styles.dateButton, error && styles.errorBorder]}
-          onPress={() => {
-            setCurrentView('date');
-            setShowPicker(true);
-          }}
-        >
-          <Ionicons name="calendar" size={20} color={colors.brand.primary} />
-          <Text style={[styles.dateTimeText, !value && styles.placeholderText]}>
-            {value ? formatDate(value) : 'Data'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Data</Text>
+          <TouchableOpacity
+            style={[styles.dateTimeButton, styles.dateButton, error && styles.errorBorder]}
+            onPress={() => {
+              setCurrentView('date');
+              setShowPicker(true);
+            }}
+          >
+            <Ionicons name="calendar" size={20} color={colors.brand.primary} />
+            <Text style={[styles.dateTimeText, !value && styles.placeholderText]}>
+              {value ? formatDate(value) : 'Selecione a data'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Time Picker */}
-        <TouchableOpacity
-          style={[styles.dateTimeButton, styles.timeButton, error && styles.errorBorder]}
-          onPress={() => {
-            setCurrentView('time');
-            setShowPicker(true);
-          }}
-        >
-          <Ionicons name="time" size={20} color={colors.brand.primary} />
-          <Text style={[styles.dateTimeText, !value && styles.placeholderText]}>
-            {value ? formatTime(value) : 'Hora'}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Horário</Text>
+          <TouchableOpacity
+            style={[styles.dateTimeButton, styles.timeButton, error && styles.errorBorder]}
+            onPress={() => {
+              setCurrentView('time');
+              setShowPicker(true);
+            }}
+          >
+            <Ionicons name="time" size={20} color={colors.brand.primary} />
+            <Text style={[styles.dateTimeText, !value && styles.placeholderText]}>
+              {value ? formatTime(value) : 'Selecione o horário'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Combined Display */}
@@ -380,8 +386,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   inputRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: spacing.md,
+  },
+  inputGroup: {
+    gap: spacing.sm,
+  },
+  inputLabel: {
+    fontSize: typography.fontSizes.md,
+    fontWeight: typography.fontWeights.semibold,
+    color: colors.brand.textPrimary,
+    marginBottom: spacing.xs,
   },
   dateTimeButton: {
     flexDirection: 'row',
@@ -396,10 +411,10 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   dateButton: {
-    flex: 2,
+    width: '100%',
   },
   timeButton: {
-    flex: 1,
+    width: '100%',
   },
   dateTimeText: {
     fontSize: typography.fontSizes.md,

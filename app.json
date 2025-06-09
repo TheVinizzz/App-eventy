@@ -6,24 +6,36 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "backgroundColor": "#060706",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/adaptive-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A0A0A"
+      "backgroundColor": "#060706"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.eventy.app"
+      "bundleIdentifier": "com.eventy.app",
+      "userInterfaceStyle": "dark",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#060706"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A0A0A"
+        "foregroundImage": "./assets/splash-icon.png",
+        "backgroundColor": "#060706"
       },
-      "package": "com.eventy.app"
+      "package": "com.eventy.app",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "cover",
+        "backgroundColor": "#060706"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -37,6 +49,20 @@
           "photosPermission": "Permite acesso às fotos para criar stories e posts",
           "cameraPermission": "Permite acesso à câmera para capturar fotos e vídeos",
           "microphonePermission": "Permite acesso ao microfone para gravar vídeos com áudio"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "cover",
+          "backgroundColor": "#060706"
+        }
+      ],
+      [
+        "expo-system-ui",
+        {
+          "userInterfaceStyle": "dark"
         }
       ]
     ]

@@ -174,7 +174,7 @@ export const SearchEventCard: React.FC<SearchEventCardProps> = ({
         <View style={styles.content}>
           {/* Title and Price Row */}
           <View style={styles.titleRow}>
-            <Text style={styles.title} numberOfLines={2}>
+            <Text style={styles.title} numberOfLines={1}>
               {event.title}
             </Text>
             <View style={styles.priceContainer}>
@@ -239,6 +239,7 @@ const styles = StyleSheet.create({
   eventImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   hiddenImage: {
     opacity: 0,

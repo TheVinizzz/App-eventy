@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle } from 'react';
+import React, { forwardRef, useImperativeHandle, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { colors, spacing, typography, borderRadius } from '../theme';
 import { fetchFeaturedEvents, Event } from '../services/eventsService';
 import { useApiData } from '../hooks/useApiData';
 import { FeaturedEventsSkeleton } from './ui';
-import { getCacheConfig } from '../config/performance';
+import api from '../services/api';
 
 const { width: screenWidth } = Dimensions.get('window');
 const CARD_WIDTH = screenWidth * 0.8;
@@ -28,8 +28,16 @@ export interface FeaturedEventsRef {
   refresh: () => Promise<void>;
 }
 
+// Extend Event interface to include rating and realAttendees
+interface ExtendedEvent extends Event {
+  rating?: number;
+  realAttendees?: number;
+}
+
 const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
   ({ onEventPress }, ref) => {
+    const [eventsWithStats, setEventsWithStats] = useState<ExtendedEvent[]>([]);
+
     const {
       data: events,
       loading,
@@ -37,21 +45,64 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
       refresh,
       isRefreshing,
     } = useApiData(
-      () => fetchFeaturedEvents(6),
+      () => fetchFeaturedEvents(8),
       {
         cacheKey: 'featured_events',
-        ...getCacheConfig('featuredEvents'),
         refetchOnMount: true,
       }
     );
 
-    // Expose refresh method to parent component
+    // Função para buscar estatísticas reais de um evento
+    const fetchEventStats = useCallback(async (eventId: string) => {
+      try {
+        const response = await api.get(`/social/attendance/events/${eventId}/stats`);
+        return response.data.total || 0;
+      } catch (error) {
+        console.error(`Error fetching stats for event ${eventId}:`, error);
+        return 0;
+      }
+    }, []);
+
+    // Carrega estatísticas reais para todos os eventos
+    const loadEventsWithStats = useCallback(async (eventsList: Event[]) => {
+      if (!eventsList || eventsList.length === 0) {
+        setEventsWithStats([]);
+        return;
+      }
+
+      try {
+        // Não limpa o estado anterior para evitar flash
+        const eventsWithStatsPromises = eventsList.map(async (event) => {
+          const realAttendees = await fetchEventStats(event.id);
+          return {
+            ...event,
+            realAttendees,
+          };
+        });
+
+        const eventsWithStatsData = await Promise.all(eventsWithStatsPromises);
+        // Só atualiza quando todos os dados estão prontos
+        setEventsWithStats(eventsWithStatsData);
+      } catch (error) {
+        console.error('Error loading events with stats:', error);
+        // Em caso de erro, ainda assim mostra os eventos com 0 interessados
+        const fallbackData = eventsList.map(event => ({ ...event, realAttendees: 0 }));
+        setEventsWithStats(fallbackData);
+      }
+    }, [fetchEventStats]);
+
+    // Carrega estatísticas sempre que os eventos mudarem
+    useEffect(() => {
+      if (events && events.length > 0) {
+        loadEventsWithStats(events);
+      }
+    }, [events, loadEventsWithStats]);
+
     useImperativeHandle(ref, () => ({
       refresh: async () => {
-        try {
-          await refresh();
-        } catch (error) {
-          console.error('Failed to refresh featured events:', error);
+        await refresh();
+        if (events && events.length > 0) {
+          await loadEventsWithStats(events);
         }
       },
     }));
@@ -114,7 +165,7 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
           return { icon: 'star' as const, color: '#00D4AA', label: 'Novo' };
         }
         
-        // Depois verifica por popularidade
+        // Depois verifica por popularidade usando dados reais
         if (safeAttendees > 1000) return { icon: 'flame' as const, color: '#FF6B35', label: 'Hot' };
         if (safeAttendees > 500) return { icon: 'trending-up' as const, color: '#F7931E', label: 'Trending' };
         if (safeAttendees > 100) return { icon: 'heart' as const, color: '#FF6B6B', label: 'Popular' };
@@ -126,18 +177,19 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
       }
     };
 
-    const renderEventCard = ({ item: event }: { item: Event }) => {
+    const renderEventCard = ({ item: event }: { item: ExtendedEvent }) => {
       try {
         if (!event || typeof event !== 'object') {
           return null;
         }
 
-        const activityBadge = getActivityBadge(event.attendees || 0, event.createdAt);
+        // Usar dados reais de interessados
+        const realAttendees = event.realAttendees || 0;
+        const activityBadge = getActivityBadge(realAttendees, event.createdAt);
 
         // Garantir que todos os valores sejam seguros
         const safeTitle = String(event.title || 'Título não disponível');
         const safeLocation = String(event.location || 'Local não informado');
-        const safeAttendees = Number(event.attendees) || 0;
         const safeDate = String(event.date || new Date().toISOString());
         const safeImageUrl = String(event.imageUrl || '');
 
@@ -186,7 +238,7 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
             </View>
 
             <View style={styles.contentSection}>
-              <Text style={styles.eventTitle} numberOfLines={2}>
+              <Text style={styles.eventTitle} numberOfLines={1}>
                 {safeTitle}
               </Text>
               
@@ -200,10 +252,10 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
               <View style={styles.statsRow}>
                 <View style={styles.statItem}>
                   <Ionicons name="people-outline" size={14} color={colors.brand.textSecondary} />
-                  <Text style={styles.statText}>{String(safeAttendees)}</Text>
+                  <Text style={styles.statText}>{String(realAttendees)}</Text>
                 </View>
                 
-                {event.rating && event.rating > 0 && (
+                {event.rating && Number(event.rating) > 0 && (
                   <View style={styles.statItem}>
                     <Ionicons name="star" size={14} color={colors.brand.primary} />
                     <Text style={styles.statText}>{String(Number(event.rating).toFixed(1))}</Text>
@@ -231,8 +283,8 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
       }
     };
 
-    // Loading state
-    if (loading && !events) {
+    // Loading state - show skeleton while loading events OR while loading stats
+    if ((loading && !events) || (events && events.length > 0 && (!eventsWithStats || eventsWithStats.length === 0))) {
       return <FeaturedEventsSkeleton count={3} />;
     }
 
@@ -259,11 +311,16 @@ const FeaturedEvents = forwardRef<FeaturedEventsRef, FeaturedEventsProps>(
       );
     }
 
+    // Final check: if we have events but no stats yet, show skeleton
+    if (!eventsWithStats || eventsWithStats.length === 0) {
+      return <FeaturedEventsSkeleton count={3} />;
+    }
+
     // Main render
     try {
       return (
         <FlatList
-          data={events || []}
+          data={eventsWithStats}
           renderItem={renderEventCard}
           keyExtractor={(item) => String(item?.id || Math.random())}
           horizontal

@@ -39,8 +39,6 @@ interface QuickAction {
 const { width: screenWidth } = Dimensions.get('window');
 
 const HomeScreen: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isAuthenticated, user } = useAuth();
@@ -120,23 +118,27 @@ const HomeScreen: React.FC = () => {
     }
   }, [refreshNearby]);
 
-  const handleCategoryPress = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-  };
+
 
   const handleQuickAction = (action: QuickAction) => {
+    // Verificar autenticação para ações que requerem login
+    if (action.requiresAuth && !isAuthenticated) {
+      setAuthModalVisible(true);
+      return;
+    }
+
     switch (action.id) {
-      case 'tickets':
+      case '1': // Meus Ingressos
         navigation.navigate('Tickets');
         break;
-      case 'favorites':
-        // Navigate to favorites
+      case '2': // Favoritos
+        navigation.navigate('Favorites');
         break;
-      case 'create':
+      case '3': // Criar Evento
         navigation.navigate('CreateEvent');
         break;
-      case 'explore':
-        // Navigate to explore
+      case '4': // Explorar
+        navigation.navigate('Search');
         break;
       default:
         break;
@@ -151,29 +153,13 @@ const HomeScreen: React.FC = () => {
     navigation.navigate('EventDetails', { eventId });
   };
 
-  const renderCategoryItem = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      style={[
-        styles.categoryChip,
-        selectedCategory === item.id && styles.categoryChipActive,
-      ]}
-      onPress={() => handleCategoryPress(item.id)}
-    >
-      <Ionicons
-        name={item.icon}
-        size={18}
-        color={selectedCategory === item.id ? colors.brand.background : colors.brand.textSecondary}
-      />
-      <Text
-        style={[
-          styles.categoryText,
-          selectedCategory === item.id && styles.categoryTextActive,
-        ]}
-      >
-        {item.name}
-      </Text>
-    </TouchableOpacity>
-  );
+  const handleFilterPress = () => {
+    navigation.navigate('Search', {
+      openFilters: true,
+    });
+  };
+
+
 
   const renderQuickAction = ({ item }: { item: any }) => (
     <TouchableOpacity
@@ -220,17 +206,17 @@ const HomeScreen: React.FC = () => {
       <View style={styles.nearbyEventContent}>
         {/* Header with Title and Attendees */}
         <View style={styles.nearbyEventHeader}>
-          <Text style={styles.nearbyEventTitle} numberOfLines={2}>
+          <Text style={styles.nearbyEventTitle} numberOfLines={1}>
             {item.title}
           </Text>
           
-          {item.attendees && item.attendees > 0 && (
+          {item.attendeesCount && item.attendeesCount > 0 && (
             <View style={styles.nearbyEventAttendeesContainer}>
               <View style={styles.nearbyEventAttendeesIcon}>
                 <Ionicons name="people" size={12} color={colors.brand.background} />
               </View>
               <Text style={styles.nearbyEventAttendeesText}>
-                {formatAttendees(item.attendees)}
+                {formatAttendees(item.attendeesCount)}
               </Text>
             </View>
           )}
@@ -386,58 +372,24 @@ const HomeScreen: React.FC = () => {
 
           {/* Search Bar */}
           <View style={styles.searchContainer}>
-            <View style={styles.searchBar}>
+            <TouchableOpacity 
+              style={styles.searchBar} 
+              onPress={() => navigation.navigate('Search', { autoFocus: true })}
+              activeOpacity={0.7}
+            >
               <Ionicons name="search" size={20} color={colors.brand.textSecondary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Buscar eventos, artistas, locais..."
-                placeholderTextColor={colors.brand.textSecondary}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={20} color={colors.brand.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+              <Text style={styles.searchInput}>
+                Buscar eventos...
+              </Text>
+            </TouchableOpacity>
             
-            <TouchableOpacity style={styles.filterButton}>
+            <TouchableOpacity style={styles.filterButton} onPress={handleFilterPress}>
               <Ionicons name="options" size={20} color={colors.brand.primary} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Categories */}
-        <View style={styles.section}>
-          <FlatList
-            data={categories}
-            renderItem={renderCategoryItem}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesContainer}
-            bounces={false}
-            alwaysBounceVertical={false}
-            alwaysBounceHorizontal={true}
-            directionalLockEnabled={true}
-          />
-        </View>
 
-        {/* Featured Events */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleContainer}>
-              <Ionicons name="flame" size={20} color={colors.brand.primary} />
-              <Text style={styles.sectionTitle}>Em Destaque</Text>
-            </View>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>Ver todos</Text>
-            </TouchableOpacity>
-          </View>
-          <FeaturedEvents ref={featuredEventsRef} onEventPress={handleEventPress} />
-        </View>
 
         {/* Quick Actions */}
         <View style={styles.section}>
@@ -462,6 +414,22 @@ const HomeScreen: React.FC = () => {
           />
         </View>
 
+        {/* Featured Events */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleContainer}>
+              <Ionicons name="flame" size={20} color={colors.brand.primary} />
+              <Text style={styles.sectionTitle}>Em Destaque</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Search', { 
+              filters: { type: 'featured' } 
+            })}>
+              <Text style={styles.seeAllText}>Ver todos</Text>
+            </TouchableOpacity>
+          </View>
+          <FeaturedEvents ref={featuredEventsRef} onEventPress={handleEventPress} />
+        </View>
+
         {/* Nearby Events */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -469,7 +437,9 @@ const HomeScreen: React.FC = () => {
               <Ionicons name="location" size={20} color={colors.brand.primary} />
               <Text style={styles.sectionTitle}>Eventos Próximos</Text>
             </View>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate('Search', { 
+              filters: { type: 'nearby' } 
+            })}>
               <Text style={styles.seeAllText}>Ver todos</Text>
             </TouchableOpacity>
           </View>
@@ -546,7 +516,10 @@ const HomeScreen: React.FC = () => {
           
           <View style={styles.quickDiscoverContainer}>
             <View style={styles.quickDiscoverRow}>
-              <TouchableOpacity style={[styles.quickDiscoverCard, styles.quickDiscoverLarge]}>
+              <TouchableOpacity 
+                style={[styles.quickDiscoverCard, styles.quickDiscoverLarge]}
+                onPress={() => navigation.navigate('Search', { type: 'SHOW' })}
+              >
                 <LinearGradient
                   colors={['#FF6B6B', '#FF8E53']}
                   style={styles.quickDiscoverGradient}
@@ -558,7 +531,10 @@ const HomeScreen: React.FC = () => {
               </TouchableOpacity>
               
               <View style={styles.quickDiscoverColumn}>
-                <TouchableOpacity style={[styles.quickDiscoverCard, styles.quickDiscoverSmall]}>
+                <TouchableOpacity 
+                  style={[styles.quickDiscoverCard, styles.quickDiscoverSmall]}
+                  onPress={() => navigation.navigate('Search', { type: 'NORMAL', query: 'food' })}
+                >
                   <LinearGradient
                     colors={['#4ECDC4', '#44A08D']}
                     style={styles.quickDiscoverGradient}
@@ -683,7 +659,8 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: typography.fontSizes.md,
-    color: colors.brand.textPrimary,
+    color: colors.brand.textSecondary,
+    fontWeight: typography.fontWeights.medium,
   },
   filterButton: {
     backgroundColor: colors.brand.darkGray,
@@ -717,34 +694,7 @@ const styles = StyleSheet.create({
     color: colors.brand.primary,
     fontWeight: typography.fontWeights.semibold,
   },
-  categoriesContainer: {
-    paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.brand.darkGray,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.full,
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.opacity.cardBorder,
-    minHeight: 48,
-  },
-  categoryChipActive: {
-    backgroundColor: colors.brand.primary,
-    borderColor: colors.brand.primary,
-  },
-  categoryText: {
-    fontSize: typography.fontSizes.md,
-    color: colors.brand.textSecondary,
-    fontWeight: typography.fontWeights.semibold,
-  },
-  categoryTextActive: {
-    color: colors.brand.background,
-  },
+
   quickActionsContainer: {
     paddingHorizontal: spacing.xl,
     gap: spacing.sm,
@@ -875,6 +825,7 @@ const styles = StyleSheet.create({
   nearbyEventImage: {
     width: '100%',
     height: '100%',
+    resizeMode: 'cover',
   },
   nearbyEventImageOverlay: {
     position: 'absolute',
