@@ -193,6 +193,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onSwitchToLogin, onClos
               <View style={styles.socialButtons}>
                 <TouchableOpacity style={[
                   styles.socialButton,
+                  styles.socialButtonFull,
                   isVerySmallScreen && styles.socialButtonSmall
                 ]}>
                   <Ionicons name="logo-google" size={16} color={colors.brand.textPrimary} />
@@ -201,19 +202,6 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onSwitchToLogin, onClos
                     isVerySmallScreen && styles.socialButtonTextSmall
                   ]}>
                     Google
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[
-                  styles.socialButton,
-                  isVerySmallScreen && styles.socialButtonSmall
-                ]}>
-                  <Ionicons name="logo-apple" size={16} color={colors.brand.textPrimary} />
-                  <Text style={[
-                    styles.socialButtonText,
-                    isVerySmallScreen && styles.socialButtonTextSmall
-                  ]}>
-                    Apple
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -393,6 +381,10 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.opacity.cardBorder,
+  },
+  socialButtonFull: {
+    flex: 0,
+    width: '100%',
   },
   socialButtonSmall: {
     paddingVertical: spacing.xs,
