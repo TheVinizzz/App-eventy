@@ -14,11 +14,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { EventTicketCard, EventTicketCardSkeleton } from '../components/ui/EventTicketCard';
-import { Ticket, ticketsService } from '../services/ticketsService';
+import { Ticket } from '../services/ticketsService';
 import { useAuth } from '../contexts/AuthContext';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TicketsStackParamList } from '../navigation/types';
+import { useTickets } from '../hooks/useTickets';
 
 interface TicketGroup {
   eventId: string;
@@ -32,34 +33,16 @@ interface TicketGroup {
 const TicketsScreen: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const navigation = useNavigation<StackNavigationProp<TicketsStackParamList>>();
-  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const { tickets, loading, refreshing, refreshTickets } = useTickets();
   const [groupedTickets, setGroupedTickets] = useState<TicketGroup[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
+  // Group tickets by event whenever tickets change
+  useEffect(() => {
+    const grouped = groupTicketsByEvent(tickets);
+    setGroupedTickets(grouped);
+  }, [tickets]);
 
-  const loadTickets = useCallback(async () => {
-    if (!isAuthenticated) return;
-
-    try {
-      const userTickets = await ticketsService.getUserTickets();
-      const validTickets = Array.isArray(userTickets) ? userTickets.filter(ticket => ticket && ticket.id) : [];
-      setTickets(validTickets);
-      
-      // Group tickets by event
-      const grouped = groupTicketsByEvent(validTickets);
-      setGroupedTickets(grouped);
-      
-    } catch (error) {
-      console.error('Erro ao carregar ingressos:', error);
-      Alert.alert('Erro', 'Não foi possível carregar seus ingressos.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [isAuthenticated]);
-
-  const groupTicketsByEvent = (tickets: Ticket[]): TicketGroup[] => {
+  const groupTicketsByEvent = useCallback((tickets: Ticket[]): TicketGroup[] => {
     const grouped = tickets.filter(ticket => ticket && ticket.event && ticket.event.id).reduce((acc, ticket) => {
       if (!ticket?.event?.id) return acc;
       
@@ -83,7 +66,7 @@ const TicketsScreen: React.FC = () => {
     return Object.values(grouped).sort((a, b) => 
       new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime()
     );
-  };
+  }, []);
 
   const handleEventPress = (group: TicketGroup) => {
     navigation.navigate('EventTickets', {
@@ -97,14 +80,13 @@ const TicketsScreen: React.FC = () => {
   };
 
   const onRefresh = () => {
-    setRefreshing(true);
-    loadTickets();
+    refreshTickets();
   };
 
   useFocusEffect(
     useCallback(() => {
-      loadTickets();
-    }, [loadTickets])
+      refreshTickets();
+    }, [refreshTickets])
   );
 
   const renderEmptyState = () => (

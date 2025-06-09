@@ -65,43 +65,48 @@ const QRCodeScreen: React.FC = () => {
   const loadTicket = async () => {
     try {
       setLoading(true);
-      // Simular carregamento do ticket
-      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Mock ticket data baseado no ticketId
-      const mockTicket: Ticket = {
-        id: params.ticketId,
-        eventId: 'event-1',
-        buyerId: 'user-1',
-        price: 150.00,
-        purchaseDate: new Date().toISOString(),
-        status: TicketStatus.ACTIVE,
-        qrCode: params.ticketId,
-        batchId: 'batch-1',
-        event: {
-          id: 'event-1',
-          title: 'Festival de Verão 2025',
-          description: 'O maior festival de música do Brasil',
-          date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          location: 'Estádio do Maracanã',
-          imageUrl: 'https://picsum.photos/400/300?random=1',
-          venue: {
-            id: 'venue-1',
-            name: 'Estádio do Maracanã',
-            address: 'Av. Pres. Castelo Branco, Portão 3',
-            city: 'Rio de Janeiro - RJ',
-          },
-        },
-        ticketBatch: {
-          id: 'batch-1',
-          name: 'Pista Premium',
-          description: 'Acesso à pista premium',
+      // Buscar o ticket real da API
+      const ticketData = await ticketsService.getTicketById(params.ticketId);
+      
+      if (ticketData) {
+        setTicket(ticketData);
+      } else {
+        // Fallback para dados mock se não encontrar o ticket
+        const mockTicket: Ticket = {
+          id: params.ticketId,
+          eventId: 'event-1',
+          buyerId: 'user-1',
           price: 150.00,
-        },
-      };
-
-      setTicket(mockTicket);
+          purchaseDate: new Date().toISOString(),
+          status: TicketStatus.ACTIVE,
+          qrCode: params.ticketId,
+          batchId: 'batch-1',
+          event: {
+            id: 'event-1',
+            title: 'Festival de Verão 2025',
+            description: 'O maior festival de música do Brasil',
+            date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            location: 'Estádio do Maracanã',
+            imageUrl: 'https://picsum.photos/400/300?random=1',
+            venue: {
+              id: 'venue-1',
+              name: 'Estádio do Maracanã',
+              address: 'Av. Pres. Castelo Branco, Portão 3',
+              city: 'Rio de Janeiro - RJ',
+            },
+          },
+          ticketBatch: {
+            id: 'batch-1',
+            name: 'Pista Premium',
+            description: 'Acesso à pista premium',
+            price: 150.00,
+          },
+        };
+        setTicket(mockTicket);
+      }
     } catch (error) {
+      console.error('Erro ao carregar ticket:', error);
       Alert.alert('Erro', 'Não foi possível carregar o ingresso');
       navigation.goBack();
     } finally {

@@ -1,10 +1,10 @@
 export const APP_CONFIG = {
   API_URL: {
-    DEVELOPMENT: 'https://files-backend-ticketly.207xgx.easypanel.host',
+    DEVELOPMENT: 'https://d36f-2804-1b0-f388-6433-e8d4-897e-f00a-388d.ngrok-free.app',
     PRODUCTION: 'https://files-backend-ticketly.207xgx.easypanel.host', // Update this to your production URL when available
   },
   WS_URL: {
-    DEVELOPMENT: 'wss://files-backend-ticketly.207xgx.easypanel.host',
+    DEVELOPMENT: 'wss://d36f-2804-1b0-f388-6433-e8d4-897e-f00a-388d.ngrok-free.app',
     PRODUCTION: 'wss://files-backend-ticketly.207xgx.easypanel.host',
   },
   TIMEOUT: 15000,

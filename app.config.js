@@ -2,13 +2,15 @@ export default {
   expo: {
     name: "EventyApp",
     slug: "eventy",
-    version: "1.0.0",
+    version: "1.0.3",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "dark",
+    owner: "thevinizzz",
+    backgroundColor: "#060706",
     extra: {
       eas: {
-        projectId: "e28871f8-90f8-46e8-b720-848194c71251"
+        projectId: "5a3a1483-c2f2-4191-9d54-c08e6b664219"
       }
     },
     splash: {
@@ -19,12 +21,12 @@ export default {
     assetBundlePatterns: ["**/*"],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: "com.eventy.app",
+      bundleIdentifier: "com.eventyapp.v2",
+      userInterfaceStyle: "dark",
       splash: {
         image: "./assets/splash-icon.png",
         resizeMode: "contain",
         backgroundColor: "#060706",
-        // Configurações específicas para iOS
         tabletImage: "./assets/splash-icon.png",
       },
     },
@@ -33,12 +35,12 @@ export default {
         foregroundImage: "./assets/adaptive-icon.png",
         backgroundColor: "#060706",
       },
-      package: "com.eventy.app",
+      package: "com.eventyapp.v2",
+      versionCode: 4,
       splash: {
         image: "./assets/splash-icon.png",
         resizeMode: "contain",
         backgroundColor: "#060706",
-        // Configurações específicas para Android
         mdpi: "./assets/splash-icon.png",
         hdpi: "./assets/splash-icon.png",
         xhdpi: "./assets/splash-icon.png",
@@ -58,6 +60,13 @@ export default {
     scheme: "eventy",
     plugins: [
       [
+        "expo-camera",
+        {
+          cameraPermission: "Permite acesso à câmera para check-ins instantâneos via QR Code",
+          microphonePermission: false,
+        },
+      ],
+      [
         "expo-image-picker",
         {
           photosPermission: "Permite acesso às fotos para criar stories e posts",
@@ -73,6 +82,12 @@ export default {
           backgroundColor: "#060706",
         },
       ],
+      [
+        "expo-system-ui",
+        {
+          userInterfaceStyle: "dark"
+        }
+      ]
     ],
   },
 }; 

@@ -33,15 +33,26 @@ export interface Ticket {
   id: string;
   eventId: string;
   event: Event;
-  userId: string;
-  user: User;
-  type: string;
+  buyerId: string;
+  user?: User;
+  type?: string;
   price: number;
-  currency: string;
-  status: 'active' | 'used' | 'expired' | 'cancelled';
+  currency?: string;
+  status: 'ACTIVE' | 'USED' | 'EXPIRED' | 'CANCELLED' | 'PENDING';
   qrCode: string;
   purchaseDate: string;
   usedAt?: string;
+  checkInDate?: string;
+  batchId?: string;
+  ticketBatch?: {
+    id: string;
+    name: string;
+    description?: string;
+    price: number;
+  };
+  billing?: {
+    status: string;
+  };
 }
 
 export interface Post {

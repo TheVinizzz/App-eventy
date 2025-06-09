@@ -30,7 +30,10 @@ import {
   QRValidationResult,
   formatCheckInTime,
   getStatusColor,
+  Ticket,
 } from '../services/ticketsService';
+import TicketValidationModal from '../components/ui/TicketValidationModal';
+import CustomAlert, { AlertType } from '../components/ui/CustomAlert';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -64,6 +67,15 @@ const CheckInScreen: React.FC = () => {
   const [showResult, setShowResult] = useState(false);
   const [lastResult, setLastResult] = useState<CheckInResult | null>(null);
   const [lastScan, setLastScan] = useState<LastScanResult | null>(null);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validatedTicket, setValidatedTicket] = useState<Ticket | null>(null);
+  const [currentQRCode, setCurrentQRCode] = useState<string>('');
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertConfig, setAlertConfig] = useState<{
+    type: AlertType;
+    title: string;
+    message: string;
+  }>({ type: 'info', title: '', message: '' });
 
   // Animations
   const scanLineAnim = useRef(new Animated.Value(0)).current;
@@ -197,6 +209,45 @@ const CheckInScreen: React.FC = () => {
     }, 3000);
   };
 
+  const showCustomAlert = (type: AlertType, title: string, message: string) => {
+    setAlertConfig({ type, title, message });
+    setShowAlert(true);
+  };
+
+  const getAlertTypeFromMessage = (message: string): { type: AlertType; title: string } => {
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('12 horas antes') || lowerMessage.includes('janela de tempo')) {
+      return { type: 'warning', title: 'Fora do Horário' };
+    }
+    
+    if (lowerMessage.includes('já utilizado') || lowerMessage.includes('already used')) {
+      return { type: 'error', title: 'Ingresso Já Usado' };
+    }
+    
+    if (lowerMessage.includes('cancelado') || lowerMessage.includes('cancelled')) {
+      return { type: 'error', title: 'Ingresso Cancelado' };
+    }
+    
+    if (lowerMessage.includes('não pago') || lowerMessage.includes('pendente')) {
+      return { type: 'warning', title: 'Pagamento Pendente' };
+    }
+    
+    if (lowerMessage.includes('evento terminou') || lowerMessage.includes('evento passou')) {
+      return { type: 'warning', title: 'Evento Finalizado' };
+    }
+    
+    if (lowerMessage.includes('inválido') || lowerMessage.includes('não encontrado')) {
+      return { type: 'error', title: 'QR Code Inválido' };
+    }
+    
+    if (lowerMessage.includes('conexão') || lowerMessage.includes('internet')) {
+      return { type: 'error', title: 'Erro de Conexão' };
+    }
+    
+    return { type: 'error', title: 'Erro' };
+  };
+
   const handleBarcodeScanned = useCallback(
     async ({ data }: BarcodeScanningResult) => {
       if (isLoading) return;
@@ -213,51 +264,41 @@ const CheckInScreen: React.FC = () => {
         // Immediate feedback
         Vibration.vibrate(50);
         
-        // Fast validation then check-in
-        const result = await checkInTicket(data, eventId);
+        // Validate QR code first (not check-in yet)
+        const validationResult = await validateTicketQR(data, eventId);
         
         setLastScan({
           qr: data,
           timestamp: now,
-          success: result.success,
+          success: validationResult.valid,
         });
 
-        setLastResult(result);
-        setShowResult(true);
-
-        // Success vibration pattern
-        if (result.success) {
-          Vibration.vibrate([100, 50, 100]);
+        if (validationResult.valid && validationResult.ticket) {
+          // Check if can actually check-in
+          if (validationResult.canCheckIn !== false) {
+            // Show validation modal for approval
+            setCurrentQRCode(data);
+            setValidatedTicket(validationResult.ticket);
+            setShowValidationModal(true);
+            setIsScanning(false); // Pause scanner when modal opens
+            setIsLoading(false);
+          } else {
+            // Valid ticket but can't check-in (time window, already used, etc.)
+            const alertInfo = getAlertTypeFromMessage(validationResult.message || 'Check-in não permitido');
+            showCustomAlert(alertInfo.type, alertInfo.title, validationResult.message || 'Check-in não permitido');
+            setIsLoading(false);
+          }
         } else {
-          Vibration.vibrate([300]);
+          // Invalid QR code
+          const alertInfo = getAlertTypeFromMessage(validationResult.message || 'QR code inválido');
+          showCustomAlert(alertInfo.type, alertInfo.title, validationResult.message || 'QR code inválido');
+          setIsLoading(false);
         }
 
-        // Auto-hide result and continue scanning
-        setTimeout(() => {
-          setShowResult(false);
-          setIsLoading(false);
-          // Reload stats after successful check-in
-          if (result.success) {
-            loadStats();
-          }
-        }, 2000);
-
       } catch (error) {
-        console.error('Check-in error:', error);
+        console.error('Validation error:', error);
         setIsLoading(false);
-        Vibration.vibrate([300, 100, 300]);
-        
-        // Create error result to show in modal instead of alert
-        setLastResult({
-          success: false,
-          message: 'Erro de conexão. Verifique sua internet e tente novamente.',
-          error: 'CONNECTION_ERROR',
-        });
-        setShowResult(true);
-
-        setTimeout(() => {
-          setShowResult(false);
-        }, 3000);
+        showCustomAlert('error', 'Erro de Conexão', 'Verifique sua internet e tente novamente.');
       }
     },
     [eventId, isLoading, lastScan]
@@ -268,27 +309,86 @@ const CheckInScreen: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const result = await checkInTicket(manualQR.trim(), eventId);
-      setLastResult(result);
-      setShowResult(true);
-      setManualQR('');
-      setShowManualInput(false);
+      // Validate manual QR first
+      const validationResult = await validateTicketQR(manualQR.trim(), eventId);
+      
+      if (validationResult.valid && validationResult.ticket) {
+        if (validationResult.canCheckIn !== false) {
+          setCurrentQRCode(manualQR.trim());
+          setValidatedTicket(validationResult.ticket);
+          setShowValidationModal(true);
+          setIsScanning(false); // Pause scanner when modal opens
+          setManualQR('');
+          setShowManualInput(false);
+          setIsLoading(false);
+        } else {
+          // Valid ticket but can't check-in
+          setLastResult({
+            success: false,
+            message: validationResult.message || 'Check-in não permitido',
+            error: 'CHECKIN_NOT_ALLOWED',
+          });
+          setShowResult(true);
+          Vibration.vibrate([300, 100, 300]);
+          setIsLoading(false);
 
-      if (result.success) {
-        Vibration.vibrate([100, 50, 100]);
-        loadStats();
+          setTimeout(() => {
+            setShowResult(false);
+          }, 4000);
+        }
       } else {
+        setLastResult({
+          success: false,
+          message: validationResult.message || 'QR code inválido',
+          error: 'INVALID_QR',
+        });
+        setShowResult(true);
         Vibration.vibrate([300]);
-      }
-
-      setTimeout(() => {
-        setShowResult(false);
         setIsLoading(false);
-      }, 2000);
+
+        setTimeout(() => {
+          setShowResult(false);
+        }, 3000);
+      }
     } catch (error) {
       setIsLoading(false);
-      Alert.alert('Erro', 'Falha ao processar check-in manual');
+      Alert.alert('Erro', 'Falha ao processar validação manual');
     }
+  };
+
+  const handleApproveCheckIn = async (): Promise<CheckInResult> => {
+    try {
+      const result = await checkInTicket(currentQRCode, eventId);
+      
+      if (result.success) {
+        loadStats(); // Reload stats after successful check-in
+        // Show success alert after modal closes
+        setTimeout(() => {
+          showCustomAlert('success', 'Check-in Realizado!', 'Entrada confirmada com sucesso.');
+        }, 500);
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Erro no check-in:', error);
+      return {
+        success: false,
+        message: 'Erro ao processar check-in. Tente novamente.',
+        error: 'CHECKIN_ERROR',
+      };
+    }
+  };
+
+  const handleRejectCheckIn = () => {
+    console.log('Check-in rejeitado para:', currentQRCode);
+    // Pode adicionar logging ou outras ações aqui
+  };
+
+  const handleCloseValidationModal = () => {
+    setShowValidationModal(false);
+    setValidatedTicket(null);
+    setCurrentQRCode('');
+    setIsScanning(true); // Resume scanner when modal closes
   };
 
   if (!permission) {
@@ -530,6 +630,26 @@ const CheckInScreen: React.FC = () => {
           </Animated.View>
         </BlurView>
       </Modal>
+
+      {/* Ticket Validation Modal */}
+      <TicketValidationModal
+        visible={showValidationModal}
+        ticket={validatedTicket}
+        onApprove={handleApproveCheckIn}
+        onReject={handleRejectCheckIn}
+        onClose={handleCloseValidationModal}
+      />
+
+      {/* Custom Alert */}
+      <CustomAlert
+        visible={showAlert}
+        type={alertConfig.type}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        onClose={() => setShowAlert(false)}
+        autoClose={true}
+        autoCloseDelay={alertConfig.type === 'error' ? 5000 : 3500}
+      />
     </SafeAreaView>
   );
 };
