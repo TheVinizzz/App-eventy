@@ -58,12 +58,46 @@ const UserProfileScreen: React.FC = () => {
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const profileFadeAnim = React.useRef(new Animated.Value(0)).current;
   const contentFadeAnim = React.useRef(new Animated.Value(0)).current;
+  const isMounted = React.useRef(true);
 
   useEffect(() => {
+    isMounted.current = true;
     if (userId) {
       loadUserProfile();
     }
+    return () => {
+      isMounted.current = false;
+    };
   }, [userId]);
+
+  // Animate content when loading completes
+  React.useEffect(() => {
+    if (!isProfileLoading && userProfile && isMounted.current) {
+      Animated.timing(profileFadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isProfileLoading, userProfile]);
+
+  React.useEffect(() => {
+    if (!isPostsLoading && !isEventsLoading && isMounted.current) {
+      Animated.timing(contentFadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [isPostsLoading, isEventsLoading]);
+
+  // Reset animations on refresh
+  React.useEffect(() => {
+    if (isRefreshing && isMounted.current) {
+      profileFadeAnim.setValue(0);
+      contentFadeAnim.setValue(0);
+    }
+  }, [isRefreshing]);
 
   const loadUserProfile = async () => {
     try {
@@ -279,40 +313,14 @@ const SkeletonPlaceholder = ({
   borderRadius?: number, 
   style?: any 
 }) => {
-    const animatedValue = React.useRef(new Animated.Value(0)).current;
-
-    React.useEffect(() => {
-      const animation = Animated.loop(
-        Animated.sequence([
-          Animated.timing(animatedValue, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: false,
-          }),
-          Animated.timing(animatedValue, {
-            toValue: 0,
-            duration: 1000,
-            useNativeDriver: false,
-          }),
-        ])
-      );
-      animation.start();
-      return () => animation.stop();
-    }, []);
-
-    const backgroundColor = animatedValue.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['rgba(255, 255, 255, 0.1)', 'rgba(255, 255, 255, 0.2)'],
-    });
-
     return (
-      <Animated.View
+      <View
         style={[
           {
             width,
             height,
             borderRadius: br,
-            backgroundColor,
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
           },
           style,
         ]}
@@ -470,35 +478,6 @@ const SkeletonPlaceholder = ({
     );
   }
 
-  // Animate content when loading completes
-  React.useEffect(() => {
-    if (!isProfileLoading && userProfile) {
-      Animated.timing(profileFadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isProfileLoading, userProfile]);
-
-  React.useEffect(() => {
-    if (!isPostsLoading && !isEventsLoading) {
-      Animated.timing(contentFadeAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [isPostsLoading, isEventsLoading]);
-
-  // Reset animations on refresh
-  React.useEffect(() => {
-    if (isRefreshing) {
-      profileFadeAnim.setValue(0);
-      contentFadeAnim.setValue(0);
-    }
-  }, [isRefreshing]);
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.brand.background} />
@@ -513,7 +492,7 @@ const SkeletonPlaceholder = ({
             <Ionicons name="arrow-back" size={24} color={colors.brand.textPrimary} />
           </TouchableOpacity>
           
-          <Text style={styles.headerTitle}>{userProfile.name}</Text>
+          <Text style={styles.headerTitle}>{userProfile?.name || 'Perfil'}</Text>
           
           <TouchableOpacity style={styles.moreButton}>
             <Ionicons name="ellipsis-horizontal" size={24} color={colors.brand.textPrimary} />

@@ -5,6 +5,9 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import RootNavigator from '../navigation/RootNavigator';
 import { View, ActivityIndicator } from 'react-native';
 
+// Para resetar o onboarding durante desenvolvimento, descomente a linha abaixo:
+// AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
+
 const OnboardingWrapper: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -15,18 +18,11 @@ const OnboardingWrapper: React.FC = () => {
 
   const checkOnboardingStatus = async () => {
     try {
-      // TEMPORÁRIO: Limpar AsyncStorage para garantir que onboarding apareça
-      await AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
-      
       const hasSeenOnboarding = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETED);
-      console.log('🔧 OnboardingWrapper Debug:');
-      console.log('Storage key:', STORAGE_KEYS.ONBOARDING_COMPLETED);
-      console.log('Stored value:', hasSeenOnboarding);
-      console.log('Show onboarding:', hasSeenOnboarding !== 'true');
+      console.log('OnboardingWrapper: Checking status');
+      console.log('Has seen onboarding:', hasSeenOnboarding);
       
-      // TEMPORÁRIO: Forçar sempre mostrar onboarding
-      setShowOnboarding(true);
-      // setShowOnboarding(hasSeenOnboarding !== 'true');
+      setShowOnboarding(hasSeenOnboarding !== 'true');
     } catch (error) {
       console.error('Error checking onboarding status:', error);
       setShowOnboarding(true); // Show onboarding by default if error

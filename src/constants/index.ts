@@ -1,11 +1,11 @@
 export const APP_CONFIG = {
   API_URL: {
-    DEVELOPMENT: 'https://db25-2804-1b0-f388-5f7c-a93d-9bae-3413-9ad.ngrok-free.app',
-    PRODUCTION: 'http://localhost:3333', // Update this to your production URL when available
+    DEVELOPMENT: 'https://files-backend-ticketly.207xgx.easypanel.host',
+    PRODUCTION: 'https://files-backend-ticketly.207xgx.easypanel.host', // Update this to your production URL when available
   },
   WS_URL: {
-    DEVELOPMENT: 'wss://db25-2804-1b0-f388-5f7c-a93d-9bae-3413-9ad.ngrok-free.app',
-    PRODUCTION: 'ws://localhost:3333',
+    DEVELOPMENT: 'wss://files-backend-ticketly.207xgx.easypanel.host',
+    PRODUCTION: 'wss://files-backend-ticketly.207xgx.easypanel.host',
   },
   TIMEOUT: 15000,
   RETRY_ATTEMPTS: 3,
@@ -87,7 +87,7 @@ export const EVENT_CATEGORIES = [
 export const APP_CONFIG_ADDITIONAL = {
   NAME: 'Eventy',
   VERSION: '1.0.0',
-  SUPPORT_EMAIL: 'support@eventy.com',
-  TERMS_URL: 'https://eventy.com/terms',
-  PRIVACY_URL: 'https://eventy.com/privacy',
+  SUPPORT_EMAIL: 'support@eventoty.com.br',
+  TERMS_URL: 'https://www.eventoty.com.br/termos-de-uso',
+  PRIVACY_URL: 'https://www.eventoty.com.br/politica-de-privacidade',
 } as const; 
