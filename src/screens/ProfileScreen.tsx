@@ -11,6 +11,10 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  Platform,
+  Dimensions,
+  Share,
+  Animated,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -25,10 +29,13 @@ import { RootStackParamList } from '../navigation/types';
 import { getUserCompleteStats, UserStats } from '../services/userStatsService';
 import { getUserActivities, UserActivity, getActivityIcon, getActivityColor } from '../services/userActivityService';
 import { ActivitySpinner } from '../components/ui/ActivitySpinner';
+import { useSafeArea } from '../hooks/useSafeArea';
 
 const ProfileScreen: React.FC = () => {
   const { user, logout, isAdmin, updateProfileImage } = useAuth();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const { applyTopPadding } = useSafeArea();
+  const [refreshing, setRefreshing] = useState(false);
   
   const [userStats, setUserStats] = useState<UserStats>({
     eventsAttended: 0,
@@ -274,8 +281,8 @@ const ProfileScreen: React.FC = () => {
             />
           }
         >
-          {/* Header */}
-          <View style={styles.header}>
+                  {/* Header */}
+        <View style={applyTopPadding(styles.header)}>
             <Text style={styles.title}>Perfil</Text>
             <TouchableOpacity 
               style={styles.editButton}
@@ -569,7 +576,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
     paddingBottom: spacing.md,
   },
   title: {

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Configuração específica para domínios HTTPS -->
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- Backend API - HTTPS -->
+        <domain includeSubdomains="true">files-backend-ticketly.207xgx.easypanel.host</domain>
+        <!-- MinIO Storage - HTTPS -->
+        <domain includeSubdomains="true">aprovaiprod-minioprod.207xgx.easypanel.host</domain>
+        
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+    
+    <!-- Permitir HTTP apenas para desenvolvimento local -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">192.168.</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+    
+    <!-- Configuração base: HTTPS por padrão -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config> 

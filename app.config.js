@@ -2,7 +2,7 @@ export default {
   expo: {
     name: "EventyApp",
     slug: "eventy",
-    version: "1.0.3",
+    version: "1.0.5",
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "dark",
@@ -36,7 +36,7 @@ export default {
         backgroundColor: "#060706",
       },
       package: "com.eventyapp.v2",
-      versionCode: 4,
+      versionCode: 10,
       splash: {
         image: "./assets/splash-icon.png",
         resizeMode: "contain",
@@ -47,6 +47,11 @@ export default {
         xxhdpi: "./assets/splash-icon.png",
         xxxhdpi: "./assets/splash-icon.png",
       },
+      usesCleartextTraffic: true,
+      permissions: [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
     },
     web: {
       favicon: "./assets/favicon.png",
@@ -86,6 +91,15 @@ export default {
         "expo-system-ui",
         {
           userInterfaceStyle: "dark"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          android: {
+            usesCleartextTraffic: true,
+            networkSecurityConfig: "./assets/network_security_config.xml"
+          }
         }
       ]
     ],

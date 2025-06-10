@@ -1,6 +1,7 @@
 // Core UI Components
 export { EventCard } from './EventCard';
 export { LoadingScreen } from './LoadingScreen';
+export { PlatformSafeAreaView } from './PlatformSafeAreaView';
 
 // Ticket Components  
 export { TicketCard, TicketCardSkeleton } from './TicketCard';

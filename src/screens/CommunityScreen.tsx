@@ -20,6 +20,8 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Card, Button } from '../components/ui';
 import { CreatePostModal, CreateStoryModal, StoriesViewer, PostCard, CommentsModal } from '../components/social';
+import EnhancedStoriesViewer from '../components/social/EnhancedStoriesViewer';
+import EnhancedStoriesCircle from '../components/social/EnhancedStoriesCircle';
 import { EventCommunityMiniCard, EventCommunityMiniCardSkeleton } from '../components/ui/EventCommunityMiniCard';
 import CommunityTransition from '../components/ui/CommunityTransition';
 
@@ -199,16 +201,22 @@ const CommunityScreen: React.FC = () => {
 
   const loadInitialData = useCallback(async () => {
     try {
+      console.log('🚀 [Initial Load] Iniciando carregamento inicial de dados');
+      console.log('🚀 [Initial Load] isInEventCommunity:', isInEventCommunity);
+      console.log('🚀 [Initial Load] currentCommunity:', currentCommunity?.event?.title || 'null');
+      
       // Load posts using the hook, stories and event communities separately
       await Promise.all([
         loadContextualPosts(),
         loadContextualStories(),
         loadEventCommunities()
       ]);
+      
+      console.log('✅ [Initial Load] Carregamento inicial concluído');
     } catch (error) {
-      console.error('Error loading initial data:', error);
+      console.error('❌ [Initial Load] Error loading initial data:', error);
     }
-  }, [currentCommunity]);
+  }, []);
 
   const loadContextualPosts = useCallback(async () => {
     if (isInEventCommunity && currentCommunity) {
@@ -256,9 +264,14 @@ const CommunityScreen: React.FC = () => {
       if (isInEventCommunity && currentCommunity) {
         // Carregar stories específicos da comunidade do evento
         console.log('🎪 Carregando stories da comunidade do evento:', currentCommunity.event?.title);
+        console.log('🎪 Event ID:', currentCommunity.eventId || currentCommunity.event.id);
+        
         const communityStories = await eventCommunityService.getCommunityStories(
           currentCommunity.eventId || currentCommunity.event.id
         );
+        
+        console.log('🎪 Stories da comunidade carregados:', communityStories.length, 'grupos');
+        
         // Converter formato de stories da comunidade para formato geral
         const flatStories = communityStories.flatMap(group => 
           group.stories.map(story => ({
@@ -270,17 +283,24 @@ const CommunityScreen: React.FC = () => {
             }
           }))
         );
+        
+        console.log('🎪 Total de stories individuais da comunidade:', flatStories.length);
         setStories(flatStories);
         setGroupedStories(groupStoriesByUser(flatStories));
       } else {
         // Carregar stories gerais (não de eventos específicos)
-        console.log('🌍 Carregando stories gerais');
+        console.log('🌍 Carregando stories gerais (sem filtro de evento)');
         const storiesData = await socialService.getStories(1, 20);
+        
+        console.log('🌍 Stories gerais carregados:', Array.isArray(storiesData) ? storiesData.length : 0);
         setStories(Array.isArray(storiesData) ? storiesData : []);
         setGroupedStories(groupStoriesByUser(Array.isArray(storiesData) ? storiesData : []));
       }
     } catch (error) {
       console.error('Error loading contextual stories:', error);
+      // Em caso de erro, limpar os stories para evitar confusão
+      setStories([]);
+      setGroupedStories([]);
     }
   }, [isInEventCommunity, currentCommunity]);
 
@@ -348,16 +368,37 @@ const CommunityScreen: React.FC = () => {
   // Recarregar dados quando muda o contexto da comunidade
   useEffect(() => {
     if (isInEventCommunity && currentCommunity) {
-      console.log('🎪 Entrando na comunidade do evento:', currentCommunity.event?.title);
-      // Forçar refresh dos posts da comunidade para garantir dados atualizados
-      loadContextualPosts();
-      loadContextualStories();
-    } else if (!isInEventCommunity) {
-      console.log('🌍 Voltando para comunidade geral');
-      // Limpar posts da comunidade
+      console.log('🎪 [Context Change] Entrando na comunidade do evento:', currentCommunity.event?.title);
+      console.log('🎪 Event ID:', currentCommunity.eventId || currentCommunity.event.id);
+      
+      // Limpar COMPLETAMENTE todos os stories e posts antes de carregar dados da comunidade
+      console.log('🧹 Limpando todos os dados antes de carregar comunidade...');
+      setStories([]);
+      setGroupedStories([]);
       setCommunityPosts([]);
-      loadContextualPosts();
-      loadContextualStories();
+      
+      // Aguardar um pouco para garantir que o state foi limpo
+      setTimeout(() => {
+        console.log('🎪 Carregando dados da comunidade após limpeza...');
+        loadContextualPosts();
+        loadContextualStories();
+      }, 100);
+      
+    } else if (!isInEventCommunity) {
+      console.log('🌍 [Context Change] Voltando para comunidade geral');
+      
+      // Limpar COMPLETAMENTE todos os dados da comunidade
+      console.log('🧹 Limpando dados da comunidade antes de carregar feed geral...');
+      setCommunityPosts([]);
+      setStories([]);
+      setGroupedStories([]);
+      
+      // Aguardar um pouco para garantir que o state foi limpo
+      setTimeout(() => {
+        console.log('🌍 Carregando dados gerais após limpeza...');
+        loadContextualPosts();
+        loadContextualStories();
+      }, 100);
     }
   }, [isInEventCommunity, currentCommunity, loadContextualPosts, loadContextualStories]);
 
@@ -531,17 +572,22 @@ const CommunityScreen: React.FC = () => {
     try {
       if (isInEventCommunity && currentCommunity) {
         // Story criado em comunidade de evento - recarregar apenas stories da comunidade
-        console.log('🎪 Story criado na comunidade, recarregando stories da comunidade');
+        console.log('🎪 Story criado na comunidade do evento, recarregando stories da comunidade');
+        console.log('🎪 Novo story ID:', newStory.id, 'Autor:', newStory.author.name);
         await loadContextualStories();
       } else {
         // Story criado no feed geral - adicionar ao estado e recarregar
         console.log('🌍 Story criado no feed geral, atualizando estado');
+        console.log('🌍 Novo story ID:', newStory.id, 'Autor:', newStory.author.name);
+        
+        // Atualização imediata do estado para feedback visual rápido
         setStories(prevStories => [newStory, ...prevStories]);
         setGroupedStories(prevGrouped => {
           const updatedStories = [newStory, ...stories];
           return groupStoriesByUser(updatedStories);
         });
-        // Recarregar para sincronizar com servidor
+        
+        // Recarregar para sincronizar com servidor (stories gerais)
         await loadContextualStories();
       }
     } catch (error) {
@@ -563,7 +609,7 @@ const CommunityScreen: React.FC = () => {
 
   const handleStoryPress = (userIndex: number, userStories: Story[]) => {
     setSelectedUserStories(userStories);
-    setSelectedStoryIndex(userIndex);
+    setSelectedStoryIndex(userIndex); // Este é o índice do USUÁRIO, não do story
     setShowStoriesViewer(true);
   };
 
@@ -691,6 +737,12 @@ const CommunityScreen: React.FC = () => {
     setLoadingProgress(0);
 
     try {
+      // Limpar estados ANTES de entrar na comunidade para evitar confusão
+      console.log('🧹 Limpando states antes de entrar na comunidade:', community.event?.title);
+      setStories([]);
+      setGroupedStories([]);
+      setCommunityPosts([]);
+      
       // Entrar na comunidade
       enterEventCommunity(community);
       setLoadingProgress(0.2);
@@ -698,7 +750,8 @@ const CommunityScreen: React.FC = () => {
       // Simular carregamento progressivo
       setTimeout(() => setLoadingProgress(0.5), 500);
       
-      // Carregar dados
+      // Carregar dados da comunidade específica
+      console.log('🎪 Carregando dados da comunidade:', community.event?.title);
       await Promise.all([
         loadContextualPosts(),
         loadContextualStories()
@@ -886,31 +939,7 @@ const CommunityScreen: React.FC = () => {
     });
   };
 
-  const renderStoryItem = ({ item, index }: { item: GroupedStories; index: number }) => (
-    <TouchableOpacity
-      style={styles.storyItem}
-      onPress={() => handleStoryPress(index, item.stories)}
-    >
-      <View style={[
-        styles.storyAvatar,
-        item.hasUnviewed && styles.storyAvatarUnviewed
-      ]}>
-        {item.user.profileImage ? (
-          <Image source={{ uri: item.user.profileImage }} style={styles.storyAvatarImage} />
-        ) : (
-          <Ionicons name="person" size={24} color={colors.brand.textSecondary} />
-        )}
-      </View>
-      <Text style={styles.storyText} numberOfLines={1}>
-        {item.user.name.split(' ')[0]}
-      </Text>
-      {item.stories.length > 1 && (
-        <View style={styles.storyCount}>
-          <Text style={styles.storyCountText}>{item.stories.length}</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  );
+  // renderStoryItem removido - agora usando apenas EnhancedStoriesCircle
 
   const renderPostItem = ({ item }: { item: Post }) => (
     <PostCard
@@ -1036,7 +1065,12 @@ const CommunityScreen: React.FC = () => {
       {/* Stories Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Stories</Text>
-        <View style={styles.storiesContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.storiesContainer}
+          style={styles.storiesScrollView}
+        >
           {/* Add Story Button - disponível em ambos contextos */}
           {user && (
             <TouchableOpacity 
@@ -1044,19 +1078,23 @@ const CommunityScreen: React.FC = () => {
               onPress={() => setShowCreateStory(true)}
             >
               <View style={styles.addStoryIcon}>
-                <Ionicons name="add" size={24} color={colors.brand.primary} />
+                <Ionicons name="add" size={28} color={colors.brand.primary} />
               </View>
               <Text style={styles.storyText}>Seu Story</Text>
             </TouchableOpacity>
           )}
           
-          {/* Stories List */}
+          {/* Stories List - Profissional */}
           {groupedStories && groupedStories.map((item, index) => (
-            <View key={item.user.id}>
-              {renderStoryItem({ item, index })}
-            </View>
+            <EnhancedStoriesCircle
+              key={item.user.id}
+              groupedStories={item}
+              onPress={() => handleStoryPress(index, item.stories)}
+              currentUserId={user?.id}
+              size="medium"
+            />
           ))}
-        </View>
+        </ScrollView>
       </View>
 
       {/* Communities Section - só mostrar na comunidade geral */}
@@ -1275,7 +1313,7 @@ const CommunityScreen: React.FC = () => {
       )}
 
       {stories.length > 0 && (
-        <StoriesViewer
+        <EnhancedStoriesViewer
           visible={showStoriesViewer}
           onClose={() => setShowStoriesViewer(false)}
           groupedStories={groupedStories}
@@ -1430,75 +1468,44 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.sm,
     color: colors.brand.textSecondary,
   },
+  storiesScrollView: {
+    flexGrow: 0,
+  },
   storiesContainer: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md, // Reduzido de lg para md (Instagram-style)
+    alignItems: 'flex-start', // Alinhamento profissional
+    paddingRight: spacing.lg, // Reduzido de xl para lg
   },
   addStoryButton: {
     alignItems: 'center',
-    marginRight: spacing.md,
-    width: 70,
+    marginRight: spacing.xs, // Espaçamento compacto como Instagram
+    width: 94, // 74 + 20 (badge space) = Mesmo espaço do EnhancedStoriesCircle com badges
+    paddingTop: 10, // Espaço para badges (badgeSize/2)
   },
   addStoryIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 74, // Mesmo containerSize do EnhancedStoriesCircle medium
+    height: 74,
+    borderRadius: 37, // 74/2
     backgroundColor: colors.brand.darkGray,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
+    borderWidth: 2.5, // Mesmo borderWidth do medium
     borderColor: colors.brand.primary,
     borderStyle: 'dashed',
   },
-  storyItem: {
-    alignItems: 'center',
-    marginRight: spacing.md,
-    width: 70,
-    position: 'relative',
-  },
-  storyAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.brand.darkGray,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.brand.textSecondary,
-    overflow: 'hidden',
-  },
-  storyAvatarUnviewed: {
-    borderColor: colors.brand.primary,
-    borderWidth: 3,
-  },
-  storyAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
+  // Estilos removidos - agora usando apenas EnhancedStoriesCircle
   storyText: {
     fontSize: typography.fontSizes.xs,
-    color: colors.brand.textSecondary,
+    color: colors.brand.textPrimary, // Mesma cor do EnhancedStoriesCircle
     marginTop: spacing.xs,
     textAlign: 'center',
+    fontWeight: typography.fontWeights.medium, // Mesmo peso
+    textShadowColor: 'rgba(0, 0, 0, 0.3)', // Mesma sombra
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
-  storyCount: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: colors.brand.primary,
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.brand.background,
-  },
-  storyCountText: {
-    fontSize: typography.fontSizes.xs,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.brand.background,
-  },
+  // storyCount estilos removidos - agora usando EnhancedStoriesCircle
   // Event Communities Styles
   sectionHeader: {
     flexDirection: 'row',

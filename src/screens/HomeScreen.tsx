@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
+import { useSafeArea } from '../hooks/useSafeArea';
 import { EventCard, NearbyEventsSkeleton } from '../components/ui';
 import FeaturedEvents, { FeaturedEventsRef } from '../components/FeaturedEvents';
 import TrendingEvents from '../components/TrendingEvents';
@@ -42,6 +43,7 @@ const HomeScreen: React.FC = () => {
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { isAuthenticated, user } = useAuth();
+  const { styles: safeAreaStyles, applyTopPadding } = useSafeArea();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const featuredEventsRef = useRef<FeaturedEventsRef>(null);
 
@@ -118,8 +120,6 @@ const HomeScreen: React.FC = () => {
     }
   }, [refreshNearby]);
 
-
-
   const handleQuickAction = (action: QuickAction) => {
     // Verificar autenticação para ações que requerem login
     if (action.requiresAuth && !isAuthenticated) {
@@ -158,8 +158,6 @@ const HomeScreen: React.FC = () => {
       openFilters: true,
     });
   };
-
-
 
   const renderQuickAction = ({ item }: { item: any }) => (
     <TouchableOpacity
@@ -346,7 +344,7 @@ const HomeScreen: React.FC = () => {
         }
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={applyTopPadding(styles.header)}>
           <View style={styles.headerTop}>
             <View style={styles.greetingContainer}>
               <Text style={styles.greeting}>
@@ -388,8 +386,6 @@ const HomeScreen: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
-
-
 
         {/* Quick Actions */}
         <View style={styles.section}>
@@ -606,7 +602,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
     paddingBottom: spacing.xl,
   },
   headerTop: {

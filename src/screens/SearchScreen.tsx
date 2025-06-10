@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SearchEventCard, LoadingScreen, SearchEventCardSkeleton } from '../components/ui';
 import { colors, spacing, typography, borderRadius } from '../theme';
+import { useSafeArea } from '../hooks/useSafeArea';
 import { fetchEvents, EventsQueryParams, PaginatedEvents, EventType, Event } from '../services/eventsService';
 import socialService, { UserProfile } from '../services/socialService';
 import UserSearchItem from '../components/UserSearchItem';
@@ -77,6 +78,7 @@ const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const route = useRoute<SearchScreenRouteProp>();
   const { user } = useAuth();
+  const { applyTopPadding } = useSafeArea();
   const searchInputRef = useRef<TextInput>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTab, setSearchTab] = useState<'events' | 'users'>('events');
@@ -803,7 +805,7 @@ const SearchScreen: React.FC = () => {
       <StatusBar barStyle="light-content" backgroundColor={colors.brand.background} />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={applyTopPadding(styles.header)}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -995,7 +997,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.opacity.cardBorder,
   },
